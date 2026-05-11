@@ -1,0 +1,83 @@
+{
+  "name": "greenwash-lens",
+  "version": "0.8.0",
+  "private": true,
+  "author": "Greenwash Lens",
+  "description": "Desktop-ready greenwashing risk detection application.",
+  "main": "electron/main.js",
+  "scripts": {
+    "prestart": "node scripts/sync-engine-core.js",
+    "start": "node server.js",
+    "predesktop:start": "node scripts/sync-engine-core.js",
+    "desktop:start": "npm run generate:icon && electron .",
+    "generate:icon": "node scripts/generate-icon-png.js",
+    "check": "node --check server.js && node --check electron/main.js && node --check scripts/generate-icon-png.js && node --check scripts/sync-engine-core.js && node --check scripts/electron-builder-hooks.js && node --check scripts/rebuild-node-native.js && node --check scripts/check-engine-sync.js && node --check src/api-router.js && node --check src/analysis-jobs.js && node --check src/engine-core.js && node --check src/env-loader.js && node --check src/greenwash-engine.js && node --check src/history-store.js && node --check src/http-utils.js && node --check src/text-classifier.js && node --check src/verification-service.js && node --check src/services/analysis-service.js && node --check src/services/llm-service.js && node --check public/local-engine.js && node --check public/app.js && node --check public/service-worker.js && node scripts/check-engine-sync.js",
+    "test": "node --test",
+    "build": "npm run generate:icon && npm run check && npm run test && electron-builder --dir",
+    "postbuild": "node scripts/rebuild-node-native.js",
+    "package": "npm run generate:icon && npm run check && npm run test && electron-builder",
+    "postpackage": "node scripts/rebuild-node-native.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "pdf-parse": "^2.4.5"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "build": {
+    "appId": "com.greenwashlens.desktop",
+    "productName": "Greenwash Lens",
+    "electronDist": "node_modules/electron/dist",
+    "beforeBuild": "scripts/electron-builder-hooks.js",
+    "directories": {
+      "buildResources": "electron/assets",
+      "output": "dist"
+    },
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "src/**/*",
+      "scripts/generate-icon-png.js",
+      "scripts/rebuild-node-native.js",
+      "scripts/sync-engine-core.js",
+      "server.js",
+      "package.json",
+      "README.md",
+      ".env.example"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business",
+      "icon": "electron/assets/icon.png"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Greenwash Lens"
+    }
+  }
+}

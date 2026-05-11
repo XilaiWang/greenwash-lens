@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Greenwash Lens icon">
+  <rect width="128" height="128" rx="24" fill="#17201f"/>
+  <circle cx="58" cy="57" r="31" fill="none" stroke="#f5f7f8" stroke-width="10"/>
+  <path d="M82 81l24 24" stroke="#f5f7f8" stroke-width="12" stroke-linecap="round"/>
+  <path d="M45 58c16-25 36-19 43-4-14-1-22 6-28 19-6-1-11-6-15-15Z" fill="#1f8a5b"/>
+</svg>

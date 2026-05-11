@@ -1,0 +1,490 @@
+const CONTEXT_LABELS = {
+  auto: "智能识别",
+  marketing: "营销文案",
+  product: "产品描述",
+  report: "ESG/CSR 报告",
+  social: "社媒内容",
+  press_release: "新闻稿/公关",
+  investor_relations: "投资者关系",
+  policy: "政策/法规",
+  employer_branding: "雇主品牌",
+};
+
+const SECTOR_LABELS = {
+  auto: "智能识别",
+  general: "通用",
+  energy: "能源/化工",
+  fashion: "服装/零售",
+  aviation: "航空/物流",
+  manufacturing: "制造业",
+  finance: "金融",
+  technology: "科技",
+  food_agriculture: "食品/农业",
+  construction_realestate: "建筑/房地产",
+  automotive: "汽车/交通",
+  consumer_goods: "消费品/日化",
+  healthcare: "医药/健康",
+};
+
+const VALID_CONTEXT_TYPES = Object.keys(CONTEXT_LABELS);
+const VALID_SECTORS = Object.keys(SECTOR_LABELS);
+
+const contextSignals = {
+  marketing: [
+    "buy",
+    "shop",
+    "campaign",
+    "brand",
+    "customers",
+    "choice",
+    "launch",
+    "series",
+    "collection",
+    "限时",
+    "新品",
+    "品牌",
+    "消费者",
+    "选择",
+    "系列",
+    "活动",
+    "购买",
+    "打造",
+  ],
+  product: [
+    "product",
+    "packaging",
+    "materials",
+    "ingredient",
+    "sku",
+    "bottle",
+    "label",
+    "产品",
+    "包装",
+    "材料",
+    "成分",
+    "面料",
+    "瓶身",
+    "可回收包装",
+  ],
+  report: [
+    "annual report",
+    "sustainability report",
+    "esg report",
+    "scope 1",
+    "scope 2",
+    "scope 3",
+    "gri",
+    "tcfd",
+    "cdp",
+    "assurance",
+    "disclosure",
+    "年度报告",
+    "可持续发展报告",
+    "esg报告",
+    "范围一",
+    "范围二",
+    "范围三",
+    "披露",
+    "审计",
+    "鉴证",
+  ],
+  social: [
+    "#",
+    "@",
+    "post",
+    "tweet",
+    "instagram",
+    "linkedin",
+    "follow",
+    "share",
+    "转发",
+    "点赞",
+    "微博",
+    "小红书",
+    "公众号",
+    "关注",
+  ],
+  press_release: [
+    "press release",
+    "news release",
+    "announcement",
+    "pr newswire",
+    "新闻稿",
+    "公告",
+    "发布",
+    "宣布",
+    "正式推出",
+    "即日起",
+  ],
+  investor_relations: [
+    "investor",
+    "shareholder",
+    "annual report",
+    "sec filing",
+    "10-k",
+    "10-q",
+    "earnings call",
+    "dividend",
+    "投资者",
+    "股东",
+    "年报",
+    "财报",
+    "业绩",
+    "上市",
+    "港交所",
+    "纽交所",
+    "纳斯达克",
+  ],
+  policy: [
+    "regulation",
+    "compliance",
+    "law",
+    "directive",
+    "legislation",
+    "regulatory",
+    "法规",
+    "政策",
+    "合规",
+    "条例",
+    "监管",
+    "国家标准",
+    "行政",
+  ],
+  employer_branding: [
+    "career",
+    "join us",
+    "workplace",
+    "employee",
+    "diversity inclusion",
+    "great place to work",
+    "招聘",
+    "雇主",
+    "员工",
+    "团队",
+    "文化",
+    "价值观",
+    "人才",
+    "加入我们",
+    "职场",
+  ],
+};
+
+const sectorSignals = {
+  energy: [
+    "oil",
+    "gas",
+    "coal",
+    "fuel",
+    "refinery",
+    "solar",
+    "wind",
+    "hydrogen",
+    "battery",
+    "grid",
+    "petrochemical",
+    "石油",
+    "天然气",
+    "煤",
+    "燃料",
+    "炼化",
+    "光伏",
+    "风电",
+    "氢能",
+    "电池",
+    "电网",
+    "化工",
+  ],
+  fashion: [
+    "fashion",
+    "clothing",
+    "apparel",
+    "garment",
+    "textile",
+    "cotton",
+    "polyester",
+    "鞋",
+    "服装",
+    "服饰",
+    "纺织",
+    "面料",
+    "棉",
+    "涤纶",
+    "门店",
+  ],
+  aviation: [
+    "airline",
+    "flight",
+    "aviation",
+    "airport",
+    "cargo",
+    "shipping",
+    "logistics",
+    "fleet",
+    "航空",
+    "航班",
+    "机场",
+    "物流",
+    "运输",
+    "货运",
+    "船运",
+    "车队",
+  ],
+  manufacturing: [
+    "factory",
+    "manufacturing",
+    "plant",
+    "production line",
+    "supply chain",
+    "steel",
+    "cement",
+    "aluminum",
+    "工厂",
+    "制造",
+    "生产线",
+    "供应链",
+    "钢铁",
+    "水泥",
+    "铝",
+    "产能",
+  ],
+  finance: [
+    "bank",
+    "fund",
+    "loan",
+    "investment",
+    "portfolio",
+    "insurance",
+    "asset",
+    "green bond",
+    "银行",
+    "基金",
+    "贷款",
+    "投资",
+    "组合",
+    "保险",
+    "资产",
+    "绿色债券",
+  ],
+  technology: [
+    "software",
+    "cloud",
+    "data center",
+    "ai",
+    "server",
+    "chip",
+    "device",
+    "platform",
+    "软件",
+    "云",
+    "数据中心",
+    "人工智能",
+    "服务器",
+    "芯片",
+    "设备",
+    "平台",
+  ],
+  food_agriculture: [
+    "farm",
+    "agriculture",
+    "crop",
+    "livestock",
+    "fertilizer",
+    "pesticide",
+    "organic",
+    "food",
+    "beverage",
+    "dairy",
+    "meat",
+    "grain",
+    "农业",
+    "食品",
+    "饮料",
+    "种植",
+    "畜牧",
+    "有机",
+    "化肥",
+    "农药",
+    "乳品",
+    "粮食",
+    "渔业",
+  ],
+  construction_realestate: [
+    "building",
+    "construction",
+    "real estate",
+    "property",
+    "green building",
+    "leed",
+    "breeam",
+    "建筑",
+    "房地产",
+    "物业",
+    "开发",
+    "楼盘",
+    "建材",
+    "绿色建筑",
+    "装修",
+  ],
+  automotive: [
+    "automotive",
+    "vehicle",
+    "car",
+    "electric vehicle",
+    "ev",
+    "charging",
+    "fleet",
+    "汽车",
+    "车辆",
+    "电动",
+    "充电",
+    "轿车",
+    "商用车",
+  ],
+  consumer_goods: [
+    "consumer goods",
+    "household",
+    "detergent",
+    "cosmetics",
+    "personal care",
+    "shampoo",
+    "toiletry",
+    "消费品",
+    "日化",
+    "洗护",
+    "清洁",
+    "化妆品",
+    "个人护理",
+    "家居",
+  ],
+  healthcare: [
+    "pharmaceutical",
+    "healthcare",
+    "hospital",
+    "medical",
+    "drug",
+    "clinical",
+    "patient",
+    "biotech",
+    "医药",
+    "医疗",
+    "制药",
+    "医院",
+    "临床",
+    "患者",
+    "健康",
+  ],
+};
+
+function classifyText(text, overrides = {}) {
+  const clean = String(text || "").trim();
+  const language = detectLanguage(clean);
+  const contextDetection = detectBySignals(clean, contextSignals, "marketing");
+  const sectorDetection = detectBySignals(clean, sectorSignals, "general");
+  const contextChoice = normalizeChoice(overrides.contextType, contextDetection.value, CONTEXT_LABELS);
+  const sectorChoice = normalizeChoice(overrides.sector, sectorDetection.value, SECTOR_LABELS);
+
+  return {
+    language,
+    context: {
+      detected: contextDetection,
+      selected: contextChoice.value,
+      source: contextChoice.source,
+      label: CONTEXT_LABELS[contextChoice.value],
+    },
+    sector: {
+      detected: sectorDetection,
+      selected: sectorChoice.value,
+      source: sectorChoice.source,
+      label: SECTOR_LABELS[sectorChoice.value],
+    },
+  };
+}
+
+function detectLanguage(text) {
+  const cjkCount = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const latinCount = (text.match(/[a-zA-Z]/g) || []).length;
+  const total = cjkCount + latinCount;
+
+  if (!total) {
+    return { value: "unknown", label: "未知", confidence: 0 };
+  }
+
+  if (cjkCount > 0 && latinCount > 0) {
+    const ratio = Math.min(cjkCount, latinCount) / total;
+    if (ratio > 0.12) {
+      return { value: "mixed", label: "中英混合", confidence: roundConfidence(0.64 + ratio) };
+    }
+  }
+
+  if (cjkCount >= latinCount) {
+    return {
+      value: "zh",
+      label: "中文",
+      confidence: roundConfidence(cjkCount / total),
+    };
+  }
+
+  return {
+    value: "en",
+    label: "英文",
+    confidence: roundConfidence(latinCount / total),
+  };
+}
+
+function detectBySignals(text, signalMap, fallback) {
+  const lower = text.toLowerCase();
+  const scored = Object.entries(signalMap)
+    .map(([value, terms]) => {
+      const matches = terms.filter((term) => lower.includes(term.toLowerCase()));
+      return {
+        value,
+        label: value,
+        score: matches.length,
+        confidence: 0,
+        matches: matches.slice(0, 6),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+
+  if (!best || best.score === 0) {
+    return {
+      value: fallback,
+      label: fallback,
+      confidence: 0.38,
+      matches: [],
+    };
+  }
+
+  return {
+    ...best,
+    confidence: roundConfidence(Math.min(0.92, 0.52 + best.score * 0.12)),
+  };
+}
+
+function normalizeChoice(value, detectedValue, labels) {
+  if (!value || value === "auto" || !labels[value]) {
+    return {
+      value: detectedValue,
+      source: "keyword",
+    };
+  }
+
+  return {
+    value,
+    source: "manual",
+  };
+}
+
+function roundConfidence(value) {
+  return Math.round(Math.max(0, Math.min(1, value)) * 100) / 100;
+}
+
+module.exports = {
+  CONTEXT_LABELS,
+  SECTOR_LABELS,
+  VALID_CONTEXT_TYPES,
+  VALID_SECTORS,
+  classifyText,
+};

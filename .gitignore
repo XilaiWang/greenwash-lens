@@ -1,0 +1,13 @@
+.env
+data/history.json
+data/history.sqlite
+data/history.sqlite-shm
+data/history.sqlite-wal
+node_modules/
+.DS_Store
+dist/
+.npm-cache/
+.node-gyp/
+.electron-cache/
+.local-home/
+public/engine-core.js
