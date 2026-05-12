@@ -41,6 +41,19 @@ const progressTiming = document.querySelector("#progressTiming");
 const progressFill = document.querySelector("#progressFill");
 const verificationSummary = document.querySelector("#verificationSummary");
 const verificationChecks = document.querySelector("#verificationChecks");
+const emotionPanel = document.querySelector("#emotionPanel");
+const emotionScore = document.querySelector("#emotionScore");
+const emotionLevel = document.querySelector("#emotionLevel");
+const emotionWarning = document.querySelector("#emotionWarning");
+const emotionRuleBar = document.querySelector("#emotionRuleBar");
+const emotionNlpBar = document.querySelector("#emotionNlpBar");
+const emotionLlmBar = document.querySelector("#emotionLlmBar");
+const emotionRuleValue = document.querySelector("#emotionRuleValue");
+const emotionNlpValue = document.querySelector("#emotionNlpValue");
+const emotionLlmValue = document.querySelector("#emotionLlmValue");
+const emotionConsistency = document.querySelector("#emotionConsistency");
+const emotionLayers = document.querySelector("#emotionLayers");
+const emotionNlpDetail = document.querySelector("#emotionNlpDetail");
 
 const bars = {
   vagueness: document.querySelector("#vaguenessBar"),
@@ -120,6 +133,22 @@ function createEmptyResult() {
     },
     factors: ["暂无结果"],
     signals: ["暂无结果"],
+    emotionAnalysis: createEmptyEmotionAnalysis(),
+  };
+}
+
+function createEmptyEmotionAnalysis() {
+  return {
+    finalScore: 0,
+    level: "none",
+    consistency: 0,
+    layersUsed: 1,
+    breakdown: {
+      rule: 0,
+      nlp: null,
+      llm: null,
+    },
+    nlpDetail: null,
   };
 }
 
@@ -486,6 +515,62 @@ function renderResult(result) {
   updateEvidence(result.evidence);
   renderList(riskFactors, result.factors);
   renderList(matchedSignals, result.signals);
+  renderEmotionAnalysis(result.emotionAnalysis || createEmptyEmotionAnalysis());
+}
+
+function renderEmotionAnalysis(emotion) {
+  if (!emotionPanel || !emotionScore || !emotionLevel) return;
+
+  const breakdown = emotion?.breakdown || {};
+  const finalScore = Math.round(Number(emotion?.finalScore || 0));
+  const level = emotion?.level || "none";
+  const consistency = Math.round(Number(emotion?.consistency || 0));
+
+  emotionPanel.dataset.level = level;
+  emotionScore.textContent = finalScore;
+  emotionLevel.textContent = level;
+  emotionWarning.hidden = consistency >= 60 || !emotion?.layersUsed;
+
+  updateEmotionBar(emotionRuleBar, emotionRuleValue, breakdown.rule, "0");
+  updateEmotionBar(emotionNlpBar, emotionNlpValue, breakdown.nlp, "NLP 服务离线");
+  updateEmotionBar(emotionLlmBar, emotionLlmValue, breakdown.llm, "0");
+
+  emotionConsistency.textContent = `一致性：${consistency}%`;
+  emotionLayers.textContent = `使用层数：${emotion?.layersUsed || 0}`;
+  renderEmotionNlpDetail(emotion?.nlpDetail || null);
+}
+
+function updateEmotionBar(bar, valueElement, value, fallbackText) {
+  if (!bar || !valueElement) return;
+  if (value === null || value === undefined) {
+    bar.style.width = "0%";
+    valueElement.textContent = fallbackText;
+    return;
+  }
+
+  const score = Math.round(Number(value || 0));
+  bar.style.width = `${clamp(score)}%`;
+  valueElement.textContent = String(score);
+}
+
+function renderEmotionNlpDetail(detail) {
+  if (!emotionNlpDetail) return;
+  emotionNlpDetail.innerHTML = "";
+  emotionNlpDetail.hidden = !detail;
+  if (!detail) return;
+
+  const items = [
+    `ClimateBERT：${detail.climateSentiment || "unknown"}`,
+    `置信度：${percent((detail.sentimentConfidence || 0) * 100)}`,
+    `承诺类型：${detail.commitmentType || "unknown"}`,
+    `具体性：${percent((detail.specificityScore ?? 0) * 100)}`,
+  ];
+
+  items.forEach((item) => {
+    const tag = document.createElement("span");
+    tag.textContent = item;
+    emotionNlpDetail.append(tag);
+  });
 }
 
 function renderLlm(llm, serviceStatus) {
@@ -1020,6 +1105,8 @@ function stageLabel(stage) {
     queued: "排队中",
     classifying: "自动识别",
     scoring: "本地规则评分",
+    "nlp-local": "NLP 情绪模型",
+    "nlp-skip": "跳过 NLP",
     llm: "外部模型增强",
     rule_engine: "本地规则评分",
     rule_preview: "本地结果预览",

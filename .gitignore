@@ -11,3 +11,4 @@ dist/
 .electron-cache/
 .local-home/
 public/engine-core.js
+__pycache__/

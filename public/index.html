@@ -7,7 +7,7 @@
     <title>Greenwash Lens</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=0.8.0" />
+    <link rel="stylesheet" href="./styles.css?v=0.9.0" />
   </head>
   <body>
     <main class="app-shell">
@@ -167,6 +167,39 @@
             <div class="evidence-item" id="scopeItem">范围/基准</div>
           </div>
 
+          <div class="emotion-panel" id="emotionPanel" data-level="none">
+            <div class="emotion-header">
+              <div>
+                <p class="metric-label">三层情绪检测</p>
+                <strong id="emotionScore">0</strong>
+              </div>
+              <span class="emotion-level" id="emotionLevel">none</span>
+            </div>
+            <p class="emotion-warning" id="emotionWarning" hidden>三层结果分歧较大，建议人工复核。</p>
+            <div class="emotion-bars" id="emotionBars">
+              <div class="emotion-bar-row">
+                <span>规则层</span>
+                <div class="bar-track"><div class="bar-fill" id="emotionRuleBar"></div></div>
+                <strong id="emotionRuleValue">0</strong>
+              </div>
+              <div class="emotion-bar-row">
+                <span>NLP层</span>
+                <div class="bar-track"><div class="bar-fill" id="emotionNlpBar"></div></div>
+                <strong id="emotionNlpValue">离线</strong>
+              </div>
+              <div class="emotion-bar-row">
+                <span>LLM层</span>
+                <div class="bar-track"><div class="bar-fill" id="emotionLlmBar"></div></div>
+                <strong id="emotionLlmValue">0</strong>
+              </div>
+            </div>
+            <div class="emotion-meta">
+              <span id="emotionConsistency">一致性：0%</span>
+              <span id="emotionLayers">使用层数：0</span>
+            </div>
+            <div class="emotion-nlp-detail" id="emotionNlpDetail" hidden></div>
+          </div>
+
           <div class="findings">
             <div>
               <p class="metric-label">风险因子</p>
@@ -239,8 +272,8 @@
       </section>
     </main>
 
-    <script src="./engine-core.js?v=0.8.0"></script>
-    <script src="./local-engine.js?v=0.8.0"></script>
-    <script src="./app.js?v=0.8.0"></script>
+    <script src="./engine-core.js?v=0.9.0"></script>
+    <script src="./local-engine.js?v=0.9.0"></script>
+    <script src="./app.js?v=0.9.0"></script>
   </body>
 </html>

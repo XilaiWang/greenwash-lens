@@ -33,6 +33,7 @@ async function enrichAnalysis(input) {
       contradictions: [],
       credibilityNotes: [],
       rewriteSuggestion: null,
+      emotionAnalysis: null,
       error: null,
     };
   }
@@ -58,6 +59,7 @@ async function enrichAnalysis(input) {
       contradictions: Array.isArray(parsed.contradictions) ? parsed.contradictions : [],
       credibilityNotes: Array.isArray(parsed.credibilityNotes) ? parsed.credibilityNotes : [],
       rewriteSuggestion: parsed.rewriteSuggestion || null,
+      emotionAnalysis: normalizeEmotionAnalysis(parsed.emotionAnalysis),
       rawText,
       error: null,
     };
@@ -72,6 +74,7 @@ async function enrichAnalysis(input) {
       contradictions: [],
       credibilityNotes: [],
       rewriteSuggestion: null,
+      emotionAnalysis: null,
       error: error.message,
     };
   }
@@ -272,6 +275,12 @@ Return only valid JSON with this shape:
     }
   ],
   "rewriteSuggestion": "把整段原文改写为合规版本，补上量化指标、时间边界、证据来源，并使用 [请填入具体百分比] 这类占位符",
+  "emotionAnalysis": {
+    "score": 0,
+    "level": "none | low | medium | high",
+    "rationale": "中文说明该文本是否使用恐惧、愧疚、过度希望、自豪感等情绪来替代证据",
+    "signals": ["简短中文情绪信号"]
+  },
   "historySummary": null
 }
 
@@ -284,6 +293,8 @@ Additional instructions:
 - contradictions 只检查文本内部是否自相矛盾；没有矛盾时返回 []
 - credibilityNotes 只针对下方列出的“绿色声明”片段，结合行业 ${sector} 评估可信度
 - rewriteSuggestion 必须是整段文本的合规改写版，并包含像 [请填入具体百分比]、[请填入基准年]、[请填入第三方来源] 这样的占位符
+- emotionAnalysis.score 必须是 0-100，衡量绿色声明中“情绪操纵/情绪替代证据”的风险，而不是一般正负面情绪
+- emotionAnalysis.level 使用 none/low/medium/high，signals 只列明显的情绪性话术
 - 普通分析时 historySummary 必须返回 null
 
 Input text:
@@ -466,6 +477,18 @@ function parseModelJson(text) {
   }
 
   return JSON.parse(jsonMatch[0]);
+}
+
+function normalizeEmotionAnalysis(value) {
+  if (!value || typeof value !== "object") return null;
+  const score = Number(value.score);
+
+  return {
+    score: Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null,
+    level: ["none", "low", "medium", "high"].includes(value.level) ? value.level : null,
+    rationale: typeof value.rationale === "string" ? value.rationale : "",
+    signals: Array.isArray(value.signals) ? value.signals : [],
+  };
 }
 
 module.exports = {

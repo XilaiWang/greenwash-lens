@@ -17,6 +17,7 @@ const {
   summarizeHistory,
   testLlmConnection,
 } = require("./services/llm-service");
+const { getNlpServiceStatus } = require("./services/nlp-service-client");
 const { createAnalysisJob, getJob } = require("./analysis-jobs");
 const { extractFromBuffer } = require("./pdf-extractor");
 const { MAX_TEXT_LENGTH } = require("./pdf-cleaner");
@@ -32,6 +33,7 @@ async function handleApi(request, response, url) {
       engineVersion: ENGINE_VERSION,
       storage: getStorageInfo(),
       llmService: getServiceStatus(),
+      nlpService: await getNlpServiceStatus(),
     });
     return true;
   }

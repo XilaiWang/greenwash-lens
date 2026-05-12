@@ -571,6 +571,115 @@ button:disabled {
   background: #fff1ef;
 }
 
+.emotion-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.emotion-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.emotion-header strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.emotion-level {
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.emotion-panel[data-level="none"] .emotion-level,
+.emotion-panel[data-level="low"] .emotion-level {
+  border-color: rgba(31, 138, 91, 0.28);
+  color: #14613f;
+  background: #eaf6f0;
+}
+
+.emotion-panel[data-level="medium"] .emotion-level {
+  border-color: rgba(189, 122, 19, 0.3);
+  color: #87570d;
+  background: #fff8ec;
+}
+
+.emotion-panel[data-level="high"] .emotion-level {
+  border-color: rgba(189, 63, 50, 0.3);
+  color: #8e2e25;
+  background: #fff1ef;
+}
+
+.emotion-warning {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(189, 122, 19, 0.26);
+  border-radius: 8px;
+  background: #fff8ec;
+  color: #70490d;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.emotion-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.emotion-bar-row {
+  display: grid;
+  grid-template-columns: 70px minmax(110px, 1fr) 68px;
+  gap: 10px;
+  align-items: center;
+  min-height: 32px;
+}
+
+.emotion-bar-row span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.emotion-bar-row strong {
+  text-align: right;
+  color: #263331;
+  font-size: 13px;
+}
+
+.emotion-meta,
+.emotion-nlp-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.emotion-meta span,
+.emotion-nlp-detail span {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .findings {
   display: grid;
   grid-template-columns: 1fr 1fr;

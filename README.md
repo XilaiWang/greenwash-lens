@@ -2,7 +2,7 @@
 
 Greenwash Lens 是一个支持中英文文本的 greenwashing 风险检测应用。现在它既可以作为开发用的本地 Web 服务运行，也可以打包成桌面应用：Windows 安装包（`.exe`）和 macOS 磁盘镜像（`.dmg`）。
 
-当前版本：`0.8.0`
+当前版本：`0.9.0`
 
 ## 这次升级后的形态
 
@@ -11,6 +11,7 @@ Greenwash Lens 是一个支持中英文文本的 greenwashing 风险检测应用
 - 历史记录：SQLite，本地长期保存，默认保留 2 年
 - 规则引擎：前后端共用一套 `src/engine-core.js`
 - 外部模型：支持 `openai`、`claude`、`gemini`、`deepseek`
+- NLP 子服务：可选 Python 服务，提供 Layer 2 情绪检测增强
 
 ## 开发运行
 
@@ -88,6 +89,9 @@ src/history-store.js             SQLite 历史存储
 src/text-classifier.js           中英文语言/场景/行业识别
 src/services/analysis-service.js 分析编排服务
 src/services/llm-service.js      外部模型适配器
+src/services/nlp-service-client.js Python NLP 子服务客户端
+src/services/emotion-fusion.js   三层情绪分数融合
+nlp-service/                     可选 Python NLP 子服务
 server.js                        开发服务入口
 scripts/generate-icon-png.js     PNG/ICO/ICNS 图标生成
 test/engine.test.js              核心规则测试
@@ -103,6 +107,8 @@ test/engine.test.js              核心规则测试
 - `POST /api/v1/llm/test`
 - `POST /api/v1/analyze-jobs`
 - `GET /api/v1/analyze-jobs/:id`
+- `POST /api/v1/history/summary`
+- `POST /api/v1/upload-pdf`
 - `GET /api/history`
 - `DELETE /api/history`
 
@@ -138,3 +144,39 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 - Windows：`%APPDATA%\\Greenwash Lens\\.env`
 
 修改 `LLM_PROVIDER`、对应的 API key 和模型名后，重启桌面应用即可生效。
+
+## NLP 子服务
+
+NLP 子服务是可选增强，不启动时应用仍然可以正常运行，使用 Layer 1 规则引擎和 Layer 3 LLM。启动后，应用会自动接入 Layer 2，并在结果中显示“三层情绪检测”。
+
+启动步骤：
+
+```bash
+cd nlp-service
+pip install -r requirements.txt
+python main.py
+```
+
+首次运行会下载约 500MB 模型，缓存位置是：
+
+```text
+~/.cache/huggingface/
+```
+
+保持 Python 子服务终端开着，然后正常启动主应用：
+
+```bash
+npm start
+```
+
+或：
+
+```bash
+npm run desktop:start
+```
+
+主应用会自动检测：
+
+```text
+http://127.0.0.1:5174
+```

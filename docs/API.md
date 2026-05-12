@@ -11,7 +11,7 @@
   "ok": true,
   "app": "greenwash-lens",
   "apiVersion": "v1",
-  "engineVersion": "engine-core-0.7.1",
+  "engineVersion": "engine-core-0.9.0",
   "storage": {
     "type": "sqlite",
     "directory": "/path/to/storage-dir",
@@ -21,6 +21,10 @@
     "provider": "deepseek",
     "enabled": true,
     "model": "deepseek-v4-flash"
+  },
+  "nlpService": {
+    "available": false,
+    "url": "http://127.0.0.1:5174"
   }
 }
 ```
@@ -51,12 +55,30 @@
     "confidence": 65,
     "level": "高风险",
     "tone": "red",
-    "summary": "该文本包含明显绿色声明，但证据、边界或行动支撑不足，建议优先进入人工核验。"
+    "summary": "该文本包含明显绿色声明，但证据、边界或行动支撑不足，建议优先进入人工核验。",
+    "emotionAnalysis": {
+      "finalScore": 58,
+      "level": "medium",
+      "consistency": 82,
+      "layersUsed": 2,
+      "breakdown": {
+        "rule": 0,
+        "nlp": null,
+        "llm": 72
+      },
+      "nlpDetail": null
+    }
+  },
+  "emotionAnalysis": {
+    "finalScore": 58,
+    "level": "medium",
+    "consistency": 82,
+    "layersUsed": 2
   },
   "meta": {
     "apiVersion": "v1",
     "app": "greenwash-lens",
-    "engineVersion": "engine-core-0.7.1",
+    "engineVersion": "engine-core-0.9.0",
     "generatedAt": "2026-05-11T00:00:00.000Z"
   }
 }
@@ -126,6 +148,44 @@ OPENAI_MODEL=gpt-4.1-mini
 - `gemini`: Gemini generateContent API
 - `deepseek`: DeepSeek OpenAI-compatible chat completions API
 
+## Layer 2 NLP 子服务
+
+可选 Python 子服务地址：
+
+```text
+http://127.0.0.1:5174
+```
+
+启动后，`POST /api/v1/analyze` 会自动把 Layer 1 规则引擎、Layer 2 NLP 子服务、Layer 3 LLM 的情绪判断融合到 `emotionAnalysis`。不启动时主应用仍正常运行，`emotionAnalysis.breakdown.nlp` 返回 `null`。
+
+Python 子服务端点：
+
+- `GET /health`
+- `POST /analyze`
+
+请求：
+
+```json
+{
+  "text": "We are committed to a sustainable future.",
+  "language": "en"
+}
+```
+
+响应：
+
+```json
+{
+  "climateSentiment": "opportunity",
+  "sentimentConfidence": 0.87,
+  "isCommitment": true,
+  "commitmentType": "commitment",
+  "specificityScore": 0.23,
+  "emotionScore": 65,
+  "language": "en"
+}
+```
+
 ## GET /api/history
 
 读取最近分析历史。支持 `limit` 参数，范围 `1-1000`。
@@ -139,3 +199,7 @@ OPENAI_MODEL=gpt-4.1-mini
 ## DELETE /api/history
 
 清空本地历史记录。
+
+## DELETE /api/v1/history/:id
+
+删除单条历史记录。

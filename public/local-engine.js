@@ -6,7 +6,7 @@
   }
 
   const STORAGE_KEY = "greenwash-local-history-v2";
-  const ENGINE_VERSION = "browser-local-0.8.0";
+  const ENGINE_VERSION = "browser-local-0.9.0";
   const CONTEXT_LABELS = {
     auto: "智能识别",
     marketing: "营销文案",
@@ -339,6 +339,26 @@
       sector: classification.sector.selected,
       classification,
     });
+    result.emotionAnalysis = {
+      finalScore: Math.round(((result.components?.emotional || 0) / 30) * 100),
+      level: "none",
+      consistency: 0,
+      layersUsed: 1,
+      breakdown: {
+        rule: Math.round(((result.components?.emotional || 0) / 30) * 100),
+        nlp: null,
+        llm: null,
+      },
+      nlpDetail: null,
+    };
+    result.emotionAnalysis.level =
+      result.emotionAnalysis.finalScore >= 71
+        ? "high"
+        : result.emotionAnalysis.finalScore >= 46
+          ? "medium"
+          : result.emotionAnalysis.finalScore >= 21
+            ? "low"
+            : "none";
     const llm = {
       enabled: false,
       provider: "none",
@@ -367,6 +387,10 @@
         model: null,
         mode: "browser-local",
         missing: ["backend", "external-llm"],
+      },
+      nlpService: {
+        available: false,
+        url: null,
       },
     };
     const historyItem = createHistoryItem({
@@ -403,6 +427,10 @@
         enabled: false,
         model: null,
         mode: "browser-local",
+      },
+      nlpService: {
+        available: false,
+        url: null,
       },
     };
   }

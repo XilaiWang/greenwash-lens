@@ -1,6 +1,8 @@
 const { ENGINE_VERSION, scoreText } = require("../greenwash-engine");
 const { classifyText } = require("../text-classifier");
 const { classifyWithLLM, enrichAnalysis, getServiceStatus } = require("./llm-service");
+const { callNlpService, NLP_SERVICE_URL } = require("./nlp-service-client");
+const { fuseEmotionScores } = require("./emotion-fusion");
 const { addHistoryItem, createHistoryItem } = require("../history-store");
 const { buildVerification } = require("../verification-service");
 
@@ -70,6 +72,13 @@ async function analyzeText({
     },
   });
 
+  onProgress?.({
+    stage: "nlp-local",
+    progress: 58,
+    message: "正在运行本地 NLP 情绪模型。",
+  });
+  const nlpResultPromise = callNlpService(clean, classification.language.value).catch(() => null);
+
   const llmStatus = getServiceStatus();
   onProgress?.({
     stage: "llm",
@@ -83,6 +92,23 @@ async function analyzeText({
     classification,
     result,
   });
+  const nlpResult = await nlpResultPromise;
+  if (!nlpResult) {
+    onProgress?.({
+      stage: "nlp-skip",
+      progress: 76,
+      message: "本地 NLP 服务未启动，跳过情绪模型。",
+    });
+  }
+  const emotionAnalysis = fuseEmotionScores({
+    ruleResult: result,
+    nlpResult,
+    llmResult: llm,
+  });
+  const resultWithEmotion = {
+    ...result,
+    emotionAnalysis,
+  };
   onProgress?.({
     stage: "saving",
     progress: 86,
@@ -100,15 +126,20 @@ async function analyzeText({
     engineVersion: ENGINE_VERSION,
     generatedAt: new Date().toISOString(),
     llmService: getServiceStatus(),
+    nlpService: {
+      available: Boolean(nlpResult && !nlpResult.error),
+      url: NLP_SERVICE_URL,
+    },
   };
   onProgress?.({
     stage: "saving",
     progress: save ? 94 : 97,
     message: save ? "正在保存分析历史。" : "跳过历史保存，整理最终结果。",
     partial: {
-      result,
+      result: resultWithEmotion,
       classification,
       llm,
+      emotionAnalysis,
       verification,
       meta,
     },
@@ -117,8 +148,9 @@ async function analyzeText({
     text: clean,
     contextType: classification.context.selected,
     sector: classification.sector.selected,
-    result,
+    result: resultWithEmotion,
     llm,
+    emotionAnalysis,
     meta,
     verification,
     classification,
@@ -133,9 +165,10 @@ async function analyzeText({
     progress: 100,
     message: "分析完成。",
     partial: {
-      result,
+      result: resultWithEmotion,
       classification,
       llm,
+      emotionAnalysis,
       verification,
       meta,
       historyItem,
@@ -143,9 +176,10 @@ async function analyzeText({
   });
 
   return {
-    result,
+    result: resultWithEmotion,
     classification,
     llm,
+    emotionAnalysis,
     verification,
     meta,
     historyItem,

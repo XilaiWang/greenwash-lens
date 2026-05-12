@@ -9,7 +9,7 @@
     root.GreenwashEngineCore = exported;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, function createEngineCore() {
-  const ENGINE_VERSION = "engine-core-0.8.0";
+  const ENGINE_VERSION = "engine-core-0.9.0";
   const CLAIM_THRESHOLD = 42;
   const MIN_GREEN_CLAIM_TOKENS = 15;
   const sampleText =

@@ -1,11 +1,11 @@
-const CACHE_NAME = "greenwash-lens-v0.8.0";
+const CACHE_NAME = "greenwash-lens-v0.9.0";
 const ASSETS = [
   "/",
   "/index.html",
-  "/styles.css?v=0.8.0",
-  "/engine-core.js?v=0.8.0",
-  "/local-engine.js?v=0.8.0",
-  "/app.js?v=0.8.0",
+  "/styles.css?v=0.9.0",
+  "/engine-core.js?v=0.9.0",
+  "/local-engine.js?v=0.9.0",
+  "/app.js?v=0.9.0",
   "/manifest.webmanifest",
   "/icon.svg",
 ];
