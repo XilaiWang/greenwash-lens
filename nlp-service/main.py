@@ -1,3 +1,5 @@
+import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI
@@ -5,8 +7,9 @@ from langdetect import DetectorFactory, detect
 from pydantic import BaseModel
 
 DetectorFactory.seed = 0
-
-app = FastAPI(title="Greenwash Lens NLP Service", version="0.9.0")
+os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "1")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 EMOTIONAL_DICT = {
     "刻不容缓": 3,
@@ -37,6 +40,9 @@ specificity_pipeline = None
 zh_tokenizer = None
 zh_model = None
 model_load_error: Optional[str] = None
+models_initialized = False
+english_models_ready = False
+zh_embedding_ready = False
 
 
 class AnalyzeRequest(BaseModel):
@@ -44,7 +50,6 @@ class AnalyzeRequest(BaseModel):
     language: str = "auto"
 
 
-@app.on_event("startup")
 def load_models():
     global sentiment_pipeline
     global commitment_pipeline
@@ -52,6 +57,12 @@ def load_models():
     global zh_tokenizer
     global zh_model
     global model_load_error
+    global models_initialized
+    global english_models_ready
+    global zh_embedding_ready
+
+    if models_initialized:
+        return
 
     errors = []
 
@@ -62,16 +73,20 @@ def load_models():
             errors.append(f"{name}: {e}")
             return None
 
-    from transformers import AutoModel, AutoTokenizer, pipeline
+    try:
+        from transformers import AutoModel, AutoTokenizer, pipeline
+    except Exception as error:
+        model_load_error = f"transformers-import: {error}"
+        models_initialized = True
+        english_models_ready = False
+        zh_embedding_ready = False
+        return
 
     sentiment_pipeline = safe_load("climate-sentiment", lambda: pipeline(
         "text-classification",
         model="climatebert/distilroberta-base-climate-sentiment",
     ))
-    commitment_pipeline = safe_load("climate-commitment", lambda: pipeline(
-        "text-classification",
-        model="climatebert/distilroberta-base-climate-commitment",
-    ))
+    commitment_pipeline = safe_load("climate-commitment", lambda: load_commitment_pipeline(pipeline))
     specificity_pipeline = safe_load("climate-specificity", lambda: pipeline(
         "text-classification",
         model="climatebert/distilroberta-base-climate-specificity",
@@ -83,20 +98,54 @@ def load_models():
         "hfl/chinese-roberta-wwm-ext",
     ))
 
+    english_models_ready = all(
+        [sentiment_pipeline is not None, commitment_pipeline is not None, specificity_pipeline is not None],
+    )
+    zh_embedding_ready = zh_tokenizer is not None and zh_model is not None
     model_load_error = "; ".join(errors) if errors else None
+    models_initialized = True
+
+
+def load_commitment_pipeline(pipeline):
+    candidates = [
+        "climatebert/distilroberta-base-climate-commitment",
+        "climatebert/distilroberta-base-climate-commitments-actions",
+    ]
+
+    last_error = None
+    for model_id in candidates:
+        try:
+            return pipeline("text-classification", model=model_id)
+        except Exception as error:
+            last_error = error
+
+    raise last_error
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    load_models()
+    yield
+
+
+app = FastAPI(title="Greenwash Lens NLP Service", version="0.9.0", lifespan=lifespan)
 
 
 @app.get("/health")
 def health():
+    load_models()
     return {
-        "ok": model_load_error is None,
-        "models_loaded": model_load_error is None,
+        "ok": english_models_ready,
+        "modelsLoaded": models_initialized,
+        "englishModelsReady": english_models_ready,
+        "zhEmbeddingReady": zh_embedding_ready,
         "error": model_load_error or None,
     }
 
 
 @app.post("/analyze")
 def analyze(payload: AnalyzeRequest):
+    load_models()
     text = (payload.text or "").strip()
     language = normalize_language(payload.language, text)
 
@@ -106,13 +155,13 @@ def analyze(payload: AnalyzeRequest):
     if language == "zh":
         return analyze_chinese(text, language)
 
-    if model_load_error:
-        return analyze_rule_fallback(text, language)
+    if not english_models_ready:
+        return {"error": "model_load_failed", "language": language}
 
     try:
         return analyze_climatebert(text, language)
-    except Exception:
-        return analyze_rule_fallback(text, language)
+    except Exception as error:
+        return {"error": "inference_failed", "language": language, "detail": str(error)}
 
 
 def normalize_language(language: str, text: str) -> str:
@@ -192,12 +241,20 @@ def normalize_sentiment(label):
 
 def normalize_commitment(label):
     value = str(label or "no commitment").lower()
-    return "commitment" if "commitment" in value and "no" not in value else "no commitment"
+    if value in ["yes", "commitment", "action"]:
+        return "commitment"
+    if "commitment" in value and "no" not in value:
+        return "commitment"
+    return "no commitment"
 
 
 def normalize_specificity(result):
     label = str(result.get("label") or "").lower()
     score = float(result.get("score") or 0.5)
+    if label in ["spec", "specific"]:
+        return round(score, 4)
+    if label in ["unspec", "vague"]:
+        return round(1 - score, 4)
     if "non" in label or "vague" in label or "not" in label:
         return round(1 - score, 4)
     if "specific" in label:
@@ -209,27 +266,6 @@ def climate_emotion_score(sentiment, specificity_score):
     sentiment_map = {"opportunity": 70, "neutral": 30, "risk": 15}
     specificity_penalty = (1 - specificity_score) * 40
     return clamp(sentiment_map.get(sentiment, 30) * 0.6 + specificity_penalty * 0.4, 0, 100)
-
-
-def analyze_rule_fallback(text: str, language: str):
-    matched_score = 0
-    for phrase, score in EMOTIONAL_DICT.items():
-        if phrase.lower() in text.lower():
-            matched_score += score
-    token_units = max(sum(1 for c in text if not c.isspace()), 1)
-    emotion_score = clamp((matched_score / max(token_units / 20, 1)) * 20, 0, 100)
-
-    return {
-        "climateSentiment": "neutral",
-        "sentimentConfidence": 0,
-        "isCommitment": False,
-        "commitmentType": "no commitment",
-        "specificityScore": 0.5,
-        "emotionScore": round(emotion_score),
-        "language": language,
-        "fallback": True,
-    }
-
 
 def build_empty_result(language):
     return {

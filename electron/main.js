@@ -1,3 +1,4 @@
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -7,12 +8,14 @@ const {
   Tray,
   app,
   nativeImage,
+  shell,
 } = require("electron");
 const { loadEnvFile } = require("../src/env-loader");
 
 let mainWindow = null;
 let tray = null;
 let backend = null;
+let nlpProcess = null;
 let quitting = false;
 
 const APP_NAME = "Greenwash Lens";
@@ -31,6 +34,8 @@ app.whenReady().then(async () => {
   process.env.ALLOW_FILE_ORIGIN = "1";
   ensureDesktopEnvTemplate(userDataDir);
   loadEnvFile(userDataDir);
+
+  startNlpService();
 
   const { startServer } = require("../server");
   backend = await startServer({
@@ -57,6 +62,8 @@ app.whenReady().then(async () => {
 app.on("before-quit", async () => {
   quitting = true;
 
+  stopNlpService();
+
   if (backend?.server) {
     await new Promise((resolve) => backend.server.close(resolve));
   }
@@ -80,12 +87,20 @@ function createMainWindow(url) {
     backgroundColor: "#f5f7f8",
     webPreferences: {
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       nodeIntegration: false,
     },
   });
 
   mainWindow.loadURL(url);
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const allowed = backend?.url ? url.startsWith(backend.url) : false;
+    if (!allowed) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.on("close", (event) => {
     if (quitting || !tray) {
       return;
@@ -137,6 +152,56 @@ function createTray() {
       mainWindow.focus();
     }
   });
+}
+
+function resolveNlpServiceDir() {
+  if (fs.existsSync(path.join(__dirname, "..", "nlp-service", "main.py"))) {
+    return path.join(__dirname, "..", "nlp-service");
+  }
+  const altPath = path.join(app.getPath("userData"), "nlp-service");
+  if (fs.existsSync(path.join(altPath, "main.py"))) {
+    return altPath;
+  }
+  return null;
+}
+
+function startNlpService() {
+  const serviceDir = resolveNlpServiceDir();
+  if (!serviceDir) {
+    console.log("NLP service directory not found, skipping.");
+    return;
+  }
+
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  nlpProcess = spawn(pythonCmd, ["main.py"], {
+    cwd: serviceDir,
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+
+  nlpProcess.on("error", () => {
+    nlpProcess = null;
+  });
+
+  nlpProcess.on("exit", (code) => {
+    if (!quitting && code !== 0) {
+      console.warn(`NLP service exited with code ${code}`);
+    }
+    nlpProcess = null;
+  });
+
+  if (nlpProcess.stderr) {
+    nlpProcess.stderr.on("data", () => {});
+  }
+}
+
+function stopNlpService() {
+  if (!nlpProcess) return;
+  try {
+    nlpProcess.kill();
+  } catch {
+    // Process already dead
+  }
+  nlpProcess = null;
 }
 
 function ensureDesktopEnvTemplate(userDataDir) {

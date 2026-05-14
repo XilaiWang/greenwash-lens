@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
@@ -12,6 +13,8 @@ const { sendJson, sendText } = require("./src/http-utils");
 const DEFAULT_HOST = process.env.HOST || "127.0.0.1";
 const DEFAULT_PORT = Number(process.env.PORT || 5173);
 const PUBLIC_DIR = path.join(__dirname, "public");
+
+const CSRF_TOKEN = crypto.randomBytes(32).toString("hex");
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -36,12 +39,17 @@ function createServer(options = {}) {
       const isApiRequest = url.pathname.startsWith("/api/");
 
       if (isApiRequest) {
-        applyApiCors({
+        const originAllowed = applyApiCors({
           request,
           response,
           allowFileOrigin,
           port: boundPort,
         });
+
+        if ((request.method === "POST" || request.method === "DELETE") && !originAllowed) {
+          sendJson(response, 403, { error: "不允许跨站点请求。请从本应用内发起操作。" });
+          return;
+        }
       }
 
       if (isApiRequest && request.method === "OPTIONS") {
@@ -50,7 +58,7 @@ function createServer(options = {}) {
         return;
       }
 
-      if (await handleApi(request, response, url)) {
+      if (await handleApi(request, response, url, CSRF_TOKEN)) {
         return;
       }
 
@@ -121,13 +129,17 @@ function applyApiCors({ request, response, allowFileOrigin, port }) {
     allowedOrigins.add("null");
   }
 
+  const originAllowed = !origin || allowedOrigins.has(origin);
+
   if (origin && allowedOrigins.has(origin)) {
     response.setHeader("Access-Control-Allow-Origin", origin);
     response.setHeader("Vary", "Origin");
   }
 
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token");
+
+  return originAllowed;
 }
 
 async function serveStaticFile(request, response, pathname) {
@@ -157,18 +169,44 @@ async function serveStaticFile(request, response, pathname) {
 
   const extension = path.extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[extension] || "application/octet-stream";
+  const isHtml = extension === ".html";
 
-  response.writeHead(200, {
-    "Cache-Control": extension === ".html" ? "no-cache" : "public, max-age=3600",
+  const headers = {
+    "Cache-Control": isHtml ? "no-cache" : "public, max-age=3600",
     "Content-Type": contentType,
-  });
+  };
+
+  if (isHtml) {
+    const csp = [
+      "default-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline'",
+      "connect-src 'self' http://127.0.0.1:* http://localhost:*",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "form-action 'self'",
+      "base-uri 'self'",
+    ].join("; ");
+    headers["Content-Security-Policy"] = csp;
+  }
+
+  response.writeHead(200, headers);
 
   if (request.method === "HEAD") {
     response.end();
     return;
   }
 
-  response.end(await fs.readFile(filePath));
+  let content = await fs.readFile(filePath);
+
+  if (isHtml) {
+    content = String(content).replace(
+      "<head>",
+      `<head>\n    <meta name="csrf-token" content="${CSRF_TOKEN}" />`,
+    );
+  }
+
+  response.end(content);
 }
 
 if (require.main === module) {

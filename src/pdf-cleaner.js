@@ -1,4 +1,7 @@
 const MAX_TEXT_LENGTH = 10000;
+const MAX_DOC_BLOCKS = 200;
+const MAX_TABLE_ROWS = 50;
+const MAX_ROW_LENGTH = 500;
 
 const SENTENCE_END = new Set([
   ".", "。", "！", "？", "!", "?", "…", "」", "）", ")", '"', "'", "”", "’",
@@ -13,10 +16,18 @@ function cleanPdfText(rawText) {
     return { cleanedText: "", document: [], warnings: [], stats: {} };
   }
 
-  const originalLength = rawText.length;
   const warnings = [];
+  let originalText = rawText;
 
-  let text = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (rawText.length > MAX_TEXT_LENGTH * 4) {
+    originalText = rawText.slice(0, MAX_TEXT_LENGTH * 4);
+    warnings.push(
+      `PDF 原始文本过长（${rawText.length} 字符），已截取前 ${MAX_TEXT_LENGTH * 4} 字符进行处理。`,
+    );
+  }
+
+  const originalLength = rawText.length;
+  let text = originalText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = text.split("\n");
 
   const docBlocks = [];
@@ -51,7 +62,26 @@ function cleanPdfText(rawText) {
   flushTable();
   flushPara();
 
-  const document = docBlocks;
+  let totalBlocks = 0;
+  const document = [];
+  for (const block of docBlocks) {
+    if (totalBlocks >= MAX_DOC_BLOCKS) {
+      warnings.push(`文档块数超过上限（${MAX_DOC_BLOCKS}），已截断。`);
+      break;
+    }
+    if (block.type === "table") {
+      const trimmedRows = block.rows.slice(0, MAX_TABLE_ROWS).map((row) =>
+        row.length > MAX_ROW_LENGTH ? row.slice(0, MAX_ROW_LENGTH) + "…" : row,
+      );
+      if (block.rows.length > MAX_TABLE_ROWS) {
+        warnings.push(`表格行数超过上限（${MAX_TABLE_ROWS}），已截断。`);
+      }
+      document.push({ type: "table", rows: trimmedRows });
+    } else {
+      document.push(block);
+    }
+    totalBlocks++;
+  }
 
   const paraTexts = document
     .filter((b) => b.type === "paragraph")

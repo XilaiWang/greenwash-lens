@@ -5,7 +5,14 @@ const WORKSPACE_ROOT = path.join(__dirname, "..");
 const DEFAULT_DATA_DIR = path.join(WORKSPACE_ROOT, "data");
 const DB_FILE_NAME = "history.sqlite";
 const LEGACY_JSON_NAME = "history.json";
-const RETENTION_MS = 1000 * 60 * 60 * 24 * 365 * 2;
+const DEFAULT_RETENTION_DAYS = 730;
+const retentionDays = Math.max(1, Number(process.env.GREENWASH_HISTORY_RETENTION_DAYS || DEFAULT_RETENTION_DAYS));
+const RETENTION_MS = 1000 * 60 * 60 * 24 * retentionDays;
+const HISTORY_ENABLED = process.env.GREENWASH_HISTORY_ENABLED !== "0";
+
+function isHistoryEnabled() {
+  return HISTORY_ENABLED;
+}
 
 let database = null;
 
@@ -31,6 +38,8 @@ function getStorageInfo() {
     type: "sqlite",
     directory: getStorageDirectory(),
     file: getDatabaseFilePath(),
+    historyEnabled: HISTORY_ENABLED,
+    retentionDays,
   };
 }
 
@@ -54,6 +63,7 @@ async function readHistory(limit = 30) {
 }
 
 async function addHistoryItem(item) {
+  if (!HISTORY_ENABLED) return item;
   const db = getDatabase();
   purgeExpiredHistory(db);
   db.prepare(
@@ -289,5 +299,6 @@ module.exports = {
   createHistoryItem,
   deleteHistoryItem,
   getStorageInfo,
+  isHistoryEnabled,
   readHistory,
 };

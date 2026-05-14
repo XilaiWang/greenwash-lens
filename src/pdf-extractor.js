@@ -1,4 +1,4 @@
-const { execFile } = require("node:child_process");
+const { execFile, spawnSync } = require("node:child_process");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
@@ -6,12 +6,23 @@ const { cleanPdfText } = require("./pdf-cleaner");
 
 let popplerCheck = null;
 let popplerAvailable = false;
+let popplerBinary = null;
 
 function checkPoppler() {
   if (popplerCheck) return popplerCheck;
   popplerCheck = new Promise((resolve) => {
-    execFile("pdftotext", ["-v"], { timeout: 5000 }, (error) => {
+    const candidate = resolvePopplerBinary();
+    if (!candidate) {
+      popplerAvailable = false;
+      resolve(false);
+      return;
+    }
+
+    execFile(candidate, ["-v"], { timeout: 5000 }, (error) => {
       popplerAvailable = !error;
+      if (popplerAvailable) {
+        popplerBinary = candidate;
+      }
       resolve(popplerAvailable);
     });
   });
@@ -20,22 +31,37 @@ function checkPoppler() {
 
 async function extractWithPoppler(filePath) {
   const outPath = filePath + ".txt";
+  const binary = popplerBinary || resolvePopplerBinary();
+
+  if (!binary) {
+    throw new Error("pdftotext-not-found");
+  }
+
   await new Promise((resolve, reject) => {
-    execFile("pdftotext", ["-layout", filePath, outPath], { timeout: 30000 }, (error) => {
+    execFile(binary, ["-layout", filePath, outPath], { timeout: 30000 }, (error) => {
       if (error) return reject(error);
       resolve();
     });
   });
   const text = await fs.readFile(outPath, "utf-8");
   await fs.unlink(outPath).catch(() => {});
-  return text.trim();
+  return normalizeExtractedText(text);
 }
 
 async function extractWithPdfJs(filePath) {
   const pdfParse = require("pdf-parse");
   const dataBuffer = await fs.readFile(filePath);
-  const result = await pdfParse(dataBuffer);
-  return result.text.trim();
+  const result = await withTimeout(pdfParse(dataBuffer), 30000, "PDF 解析超时，请尝试更小的文件。");
+  return normalizeExtractedText(result.text);
+}
+
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error(message), { statusCode: 422 })), ms),
+    ),
+  ]);
 }
 
 async function extractPdfText(filePath) {
@@ -43,6 +69,9 @@ async function extractPdfText(filePath) {
   if (stat.size === 0) {
     throw Object.assign(new Error("PDF 文件为空。"), { statusCode: 400 });
   }
+
+  let popplerError = null;
+  let pdfjsError = null;
 
   try {
     await checkPoppler();
@@ -56,21 +85,33 @@ async function extractPdfText(filePath) {
       if (text) {
         return { text, engine: "poppler" };
       }
-    } catch {
-      popplerAvailable = false;
+      popplerError = new Error("poppler-empty-text");
+    } catch (error) {
+      popplerError = error;
     }
   }
 
   try {
     const text = await extractWithPdfJs(filePath);
-    return { text, engine: "pdfjs" };
+    if (text) {
+      return { text, engine: "pdfjs" };
+    }
+    pdfjsError = new Error("pdfjs-empty-text");
   } catch (error) {
-    const friendly = new Error(
-      "无法提取 PDF 文字。请确认文件未加密、不是纯扫描图片，或尝试直接复制文字到输入框。",
-    );
-    friendly.statusCode = 422;
-    throw friendly;
+    pdfjsError = error;
   }
+
+  const noExtractableText = [popplerError, pdfjsError]
+    .filter(Boolean)
+    .some((error) => String(error.message || "").includes("empty-text"));
+
+  const friendly = new Error(
+    noExtractableText
+      ? "这个 PDF 中没有检测到可提取文字。它可能是扫描件、图片型 PDF，或文字位于不可复制的图层中。"
+      : "无法提取 PDF 文字。请确认文件未加密、不是纯扫描图片，或尝试直接复制文字到输入框。",
+  );
+  friendly.statusCode = 422;
+  throw friendly;
 }
 
 async function extractFromBuffer(buffer) {
@@ -91,3 +132,55 @@ module.exports = {
   extractPdfText,
   extractFromBuffer,
 };
+
+function normalizeExtractedText(value) {
+  return String(value || "")
+    .replace(/\u0000/g, "")
+    .trim();
+}
+
+function resolvePopplerBinary() {
+  if (popplerBinary) return popplerBinary;
+
+  const candidates = [
+    process.env.PDFTOTEXT_PATH,
+    discoverViaShell(),
+    "/opt/homebrew/bin/pdftotext",
+    "/usr/local/bin/pdftotext",
+    "/opt/anaconda3/bin/pdftotext",
+    "/usr/bin/pdftotext",
+    "pdftotext",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (candidate === "pdftotext") {
+      popplerBinary = candidate;
+      return candidate;
+    }
+
+    try {
+      require("node:fs").accessSync(candidate);
+      popplerBinary = candidate;
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function discoverViaShell() {
+  const shell = process.env.SHELL || "/bin/zsh";
+
+  try {
+    const result = spawnSync(shell, ["-lc", "command -v pdftotext"], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    const resolved = String(result.stdout || "").trim();
+    return resolved || null;
+  } catch {
+    return null;
+  }
+}

@@ -476,7 +476,119 @@ function parseModelJson(text) {
     };
   }
 
-  return JSON.parse(jsonMatch[0]);
+  let jsonText = jsonMatch[0];
+
+  try {
+    return JSON.parse(jsonText);
+  } catch (primaryError) {
+    // Retry with sanitized JSON — LLM outputs often have trailing commas or
+    // unescaped characters that break JSON.parse.
+    try {
+      const sanitized = sanitizeLlmJson(jsonText);
+      return JSON.parse(sanitized);
+    } catch (fallbackError) {
+      // Extract whatever fields we can via regex
+      const partial = extractPartialFields(jsonText, trimmed);
+      console.warn(
+        "LLM JSON parse failed after sanitization.\n" +
+          "Primary error: " + primaryError.message + "\n" +
+          "Raw text (first 500 chars): " + trimmed.slice(0, 500),
+      );
+      return partial;
+    }
+  }
+}
+
+function sanitizeLlmJson(json) {
+  return json
+    // Remove trailing commas before ] or }
+    .replace(/,(\s*[}\]])/g, "$1")
+    // Fix missing commas between string values "..." "..."
+    .replace(/"(\s*)"(\s*)"/g, '",$1"$2"')
+    // Fix missing commas between ] or } and "
+    .replace(/([}\]\d])(\s*\n?\s*)"([a-zA-Z])/g, '$1,$2"$3')
+    // Fix missing commas between value and next key
+    .replace(/([}\]\d"a-zA-Z])(\s*\n?\s*)"([a-zA-Z])/g, (m, p1, p2, p3) => {
+      if (p1 === '"') return m;
+      return p1 + ',' + p2 + '"' + p3;
+    })
+    // Remove single-line // comments
+    .replace(/\/\/[^\n]*/g, "")
+    // Collapse escaped newlines that break JSON strings
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ");
+}
+
+function extractPartialFields(json, rawText) {
+  const extract = (pattern, fallback) => {
+    try {
+      const match = json.match(pattern);
+      return match ? JSON.parse(match[1]) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  return {
+    summary: extractStringField(json, rawText, "summary"),
+    annotations: extractArrayField(json, "annotations"),
+    adjustedRisk: extractNumberField(json, "adjustedRisk"),
+    evidenceStatus: extractStringField(json, rawText, "evidenceStatus") || "unknown",
+    vagueExplanations: extractArrayField(json, "vagueExplanations"),
+    contradictions: extractArrayField(json, "contradictions"),
+    credibilityNotes: extractArrayField(json, "credibilityNotes"),
+    rewriteSuggestion: extractStringField(json, rawText, "rewriteSuggestion"),
+    emotionAnalysis: extractObjectField(json, "emotionAnalysis"),
+    historySummary: extractStringField(json, rawText, "historySummary"),
+  };
+}
+
+function extractStringField(json, fallbackText, fieldName) {
+  const patterns = [
+    new RegExp('"' + fieldName + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"', 'm'),
+    new RegExp('"' + fieldName + '"\\s*:\\s*"([^"]*)"', 'm'),
+  ];
+  for (const p of patterns) {
+    const match = json.match(p);
+    if (match) return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+  }
+  return fieldName === "summary" ? (fallbackText || "").slice(0, 500) : null;
+}
+
+function extractArrayField(json, fieldName) {
+  try {
+    const pattern = new RegExp('"' + fieldName + '"\\s*:\\s*(\\[[^\\]]*\\])', 's');
+    const match = json.match(pattern);
+    if (match) {
+      const cleaned = match[1].replace(/,\s*]/g, ']');
+      const parsed = JSON.parse(cleaned);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+  } catch {}
+  return [];
+}
+
+function extractNumberField(json, fieldName) {
+  try {
+    const pattern = new RegExp('"' + fieldName + '"\\s*:\\s*(-?\\d+\\.?\\d*)');
+    const match = json.match(pattern);
+    if (match) {
+      const n = Number(match[1]);
+      return Number.isFinite(n) ? n : null;
+    }
+  } catch {}
+  return null;
+}
+
+function extractObjectField(json, fieldName) {
+  try {
+    const pattern = new RegExp('"' + fieldName + '"\\s*:\\s*(\\{[^}]*\\})', 's');
+    const match = json.match(pattern);
+    if (match) {
+      const cleaned = match[1].replace(/,\s*}/g, '}');
+      return JSON.parse(cleaned);
+    }
+  } catch {}
+  return null;
 }
 
 function normalizeEmotionAnalysis(value) {

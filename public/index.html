@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,7 +7,7 @@
     <title>Greenwash Lens</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=0.9.0" />
+    <link rel="stylesheet" href="./styles.css?v=0.9.0-ui-fix.1" />
   </head>
   <body>
     <main class="app-shell">
@@ -16,66 +16,91 @@
           <p class="eyebrow">Greenwash Lens</p>
           <h1>绿色声明风险检测</h1>
         </div>
-        <div class="status-pill" id="engineStatus">应用启动中</div>
+        <div class="topbar-actions">
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换暗色模式" title="切换暗色模式"></button>
+          <div class="status-pill" id="engineStatus">应用启动中</div>
+        </div>
       </header>
 
       <section class="workspace" aria-label="检测工作区">
         <form class="input-panel" id="analysisForm">
-          <div class="field-row">
-            <label for="contextType">文本场景</label>
-            <select id="contextType" name="contextType">
-              <option value="auto" selected>智能识别</option>
-              <option value="marketing">营销文案</option>
-              <option value="product">产品描述</option>
-              <option value="report">ESG/CSR 报告</option>
-              <option value="social">社媒内容</option>
-              <option value="press_release">新闻稿/公关</option>
-              <option value="investor_relations">投资者关系</option>
-              <option value="policy">政策/法规</option>
-              <option value="employer_branding">雇主品牌</option>
-            </select>
+          <section class="start-guide" aria-label="开始指引">
+            <div>
+              <p class="metric-label">开始方式</p>
+              <h2>上传 PDF 或粘贴文本</h2>
+            </div>
+            <div class="guide-steps" aria-label="使用流程">
+              <span>1 添加内容</span>
+              <span>2 自动识别</span>
+              <span>3 开始分析</span>
+            </div>
+          </section>
+
+          <div class="guidance-row">
+            <div class="guidance-heading">
+              <p class="guidance-label">智能识别</p>
+              <p class="classification-status" id="classificationStatus">添加内容后自动判断场景和行业</p>
+            </div>
+            <div class="field-row">
+              <label for="contextType">文本场景</label>
+              <select id="contextType" name="contextType">
+                <option value="auto" selected>智能识别</option>
+                <option value="marketing">营销文案</option>
+                <option value="product">产品描述</option>
+                <option value="report">ESG/CSR 报告</option>
+                <option value="social">社媒内容</option>
+                <option value="press_release">新闻稿/公关</option>
+                <option value="investor_relations">投资者关系</option>
+                <option value="policy">政策/法规</option>
+                <option value="employer_branding">雇主品牌</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <label for="sector">行业</label>
+              <select id="sector" name="sector">
+                <option value="auto" selected>智能识别</option>
+                <option value="general">通用</option>
+                <option value="energy">能源/化工</option>
+                <option value="fashion">服装/零售</option>
+                <option value="aviation">航空/物流</option>
+                <option value="manufacturing">制造业</option>
+                <option value="finance">金融</option>
+                <option value="technology">科技</option>
+                <option value="food_agriculture">食品/农业</option>
+                <option value="construction_realestate">建筑/房地产</option>
+                <option value="automotive">汽车/交通</option>
+                <option value="consumer_goods">消费品/日化</option>
+                <option value="healthcare">医药/健康</option>
+              </select>
+            </div>
           </div>
 
-          <div class="field-row">
-            <label for="sector">行业</label>
-            <select id="sector" name="sector">
-              <option value="auto" selected>智能识别</option>
-              <option value="general">通用</option>
-              <option value="energy">能源/化工</option>
-              <option value="fashion">服装/零售</option>
-              <option value="aviation">航空/物流</option>
-              <option value="manufacturing">制造业</option>
-              <option value="finance">金融</option>
-              <option value="technology">科技</option>
-              <option value="food_agriculture">食品/农业</option>
-              <option value="construction_realestate">建筑/房地产</option>
-              <option value="automotive">汽车/交通</option>
-              <option value="consumer_goods">消费品/日化</option>
-              <option value="healthcare">医药/健康</option>
-            </select>
-          </div>
+          <div class="input-split">
+            <div class="pdf-upload-zone" id="pdfUploadZone" role="button" tabindex="0" aria-label="上传 PDF 文件">
+              <span class="pdf-upload-icon" aria-hidden="true">&#128196;</span>
+              <span class="pdf-upload-kicker">PDF 文件</span>
+              <span class="pdf-upload-label">拖拽到此处，或<span class="pdf-upload-link">点击选择文件</span></span>
+              <span class="pdf-upload-hint">提取文本后会自动识别场景和行业</span>
+              <span class="pdf-upload-status" id="pdfUploadStatus" hidden></span>
+              <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" hidden />
+            </div>
 
-          <div class="pdf-upload-zone" id="pdfUploadZone" role="button" tabindex="0" aria-label="上传 PDF 文件">
-            <div class="pdf-upload-icon" aria-hidden="true">&#128196;</div>
-            <p class="pdf-upload-label">拖拽 PDF 文件到此处，或<span class="pdf-upload-link">点击选择文件</span></p>
-            <p class="pdf-upload-hint">自动提取文字后填入输入框，支持中英文 PDF</p>
-            <p class="pdf-upload-status" id="pdfUploadStatus" hidden></p>
-            <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" hidden />
-          </div>
-
-          <div class="text-field">
-            <label for="claimText">待检测文本</label>
-            <textarea
-              id="claimText"
-              name="claimText"
-              rows="13"
-              spellcheck="false"
-              placeholder="粘贴一段绿色、环保、低碳、ESG 或可持续相关表述"
-            ></textarea>
+            <div class="text-field">
+              <label for="claimText">待检测文本</label>
+              <textarea
+                id="claimText"
+                name="claimText"
+                rows="13"
+                spellcheck="false"
+                placeholder="粘贴一段绿色、环保、低碳、ESG 或可持续相关表述"
+              ></textarea>
+            </div>
           </div>
 
           <div class="button-row">
-            <button class="primary-button" type="submit">分析</button>
+            <button class="primary-button" type="submit">开始分析</button>
+          </div>
+          <div class="button-row-secondary">
             <button class="secondary-button" id="sampleButton" type="button">示例</button>
             <button class="ghost-button" id="clearButton" type="button">清空</button>
             <button class="ghost-button" id="exportButton" type="button" disabled>导出 JSON</button>
@@ -91,6 +116,14 @@
         </section>
 
         <section class="result-panel" aria-live="polite" aria-label="检测结果">
+          <div class="welcome-panel" id="welcomePanel">
+            <div class="welcome-icon-row">
+              <span class="welcome-icon">🔍</span>
+            </div>
+            <p class="welcome-title">等待分析结果</p>
+            <p class="welcome-desc">添加内容后，左侧会先完成场景与行业识别；点击“开始分析”后，这里展示风险评分、证据缺口和详细诊断。</p>
+            <button class="secondary-button welcome-try-button" id="welcomeTryButton" type="button">试试示例文本</button>
+          </div>
           <div class="score-block">
             <div class="risk-gauge" id="riskGauge" style="--score: 0">
               <div class="gauge-core">
@@ -116,6 +149,15 @@
                 <strong id="confidenceScore">0%</strong>
               </div>
               <p class="analysis-note" id="analysisNote">分析完成后会显示这次分数是完整风险判断，还是非绿色声明基线分。</p>
+            </div>
+
+            <div class="skeleton-group score-skeleton">
+              <div class="skeleton-gauge"></div>
+              <div class="skeleton-summary">
+                <div class="skeleton-summary-line"></div>
+                <div class="skeleton-summary-line"></div>
+                <div class="skeleton-summary-line"></div>
+              </div>
             </div>
           </div>
 
@@ -159,6 +201,13 @@
             </div>
           </div>
 
+          <div class="skeleton-group" style="gap:10px;">
+            <div class="skeleton-bar"></div>
+            <div class="skeleton-bar"></div>
+            <div class="skeleton-bar"></div>
+            <div class="skeleton-bar"></div>
+          </div>
+
           <div class="evidence-strip" id="evidenceStrip">
             <div class="evidence-item" id="quantifiedItem">量化指标</div>
             <div class="evidence-item" id="timelineItem">时间边界</div>
@@ -167,37 +216,61 @@
             <div class="evidence-item" id="scopeItem">范围/基准</div>
           </div>
 
-          <div class="emotion-panel" id="emotionPanel" data-level="none">
-            <div class="emotion-header">
-              <div>
-                <p class="metric-label">三层情绪检测</p>
-                <strong id="emotionScore">0</strong>
+          <div class="skeleton-group evidence-skeleton" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;">
+            <div class="skeleton-chip"></div>
+            <div class="skeleton-chip"></div>
+            <div class="skeleton-chip"></div>
+            <div class="skeleton-chip"></div>
+            <div class="skeleton-chip"></div>
+          </div>
+
+          <div class="skeleton-group findings-skeleton" style="grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+          </div>
+
+          <div class="collapsible-section" id="emotionCollapsible">
+            <button class="collapsible-header" type="button" aria-expanded="false" aria-controls="emotionPanel">
+              <span class="collapsible-title">三层情绪检测</span>
+              <span class="collapsible-summary" id="emotionCollapsibleSummary">待分析</span>
+              <span class="collapsible-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="collapsible-body" id="emotionPanelBody">
+              <div class="emotion-panel" id="emotionPanel" data-level="none">
+                <p class="emotion-plain-explain" id="emotionPlainExplain">待分析。</p>
+                <div class="emotion-header">
+                  <div>
+                    <strong id="emotionScore">0</strong>
+                  </div>
+                  <span class="emotion-level" id="emotionLevel">none</span>
+                </div>
+                <p class="emotion-warning" id="emotionWarning" hidden>三层结果分歧较大，建议人工复核。</p>
+                <div class="emotion-bars" id="emotionBars">
+                  <div class="emotion-bar-row">
+                    <span>规则层</span>
+                    <div class="bar-track"><div class="bar-fill" id="emotionRuleBar"></div></div>
+                    <strong id="emotionRuleValue">0</strong>
+                  </div>
+                  <div class="emotion-bar-row">
+                    <span>NLP层</span>
+                    <div class="bar-track"><div class="bar-fill" id="emotionNlpBar"></div></div>
+                    <strong id="emotionNlpValue">离线</strong>
+                  </div>
+                  <div class="emotion-bar-row">
+                    <span>LLM层</span>
+                    <div class="bar-track"><div class="bar-fill" id="emotionLlmBar"></div></div>
+                    <strong id="emotionLlmValue">0</strong>
+                  </div>
+                </div>
+                <div class="emotion-meta">
+                  <span id="emotionConsistency">一致性：0%</span>
+                  <span id="emotionLayers">使用层数：0</span>
+                </div>
+                <div class="emotion-nlp-detail" id="emotionNlpDetail" hidden></div>
               </div>
-              <span class="emotion-level" id="emotionLevel">none</span>
             </div>
-            <p class="emotion-warning" id="emotionWarning" hidden>三层结果分歧较大，建议人工复核。</p>
-            <div class="emotion-bars" id="emotionBars">
-              <div class="emotion-bar-row">
-                <span>规则层</span>
-                <div class="bar-track"><div class="bar-fill" id="emotionRuleBar"></div></div>
-                <strong id="emotionRuleValue">0</strong>
-              </div>
-              <div class="emotion-bar-row">
-                <span>NLP层</span>
-                <div class="bar-track"><div class="bar-fill" id="emotionNlpBar"></div></div>
-                <strong id="emotionNlpValue">离线</strong>
-              </div>
-              <div class="emotion-bar-row">
-                <span>LLM层</span>
-                <div class="bar-track"><div class="bar-fill" id="emotionLlmBar"></div></div>
-                <strong id="emotionLlmValue">0</strong>
-              </div>
-            </div>
-            <div class="emotion-meta">
-              <span id="emotionConsistency">一致性：0%</span>
-              <span id="emotionLayers">使用层数：0</span>
-            </div>
-            <div class="emotion-nlp-detail" id="emotionNlpDetail" hidden></div>
           </div>
 
           <div class="findings">
@@ -215,41 +288,53 @@
             </div>
           </div>
 
-          <div class="llm-panel" id="llmPanel">
-            <p class="metric-label">LLM 增强判断</p>
-            <p id="llmSummary">未配置外部模型 API，当前使用本地规则引擎。</p>
-            <ul id="llmAnnotations" class="signal-list">
-              <li>暂无外部模型补充结果</li>
-            </ul>
+          <div class="collapsible-section" id="llmCollapsible">
+            <button class="collapsible-header" type="button" aria-expanded="false" aria-controls="llmPanelBody">
+              <span class="collapsible-title">LLM 增强判断</span>
+              <span class="collapsible-summary" id="llmCollapsibleSummary">未配置外部模型</span>
+              <span class="collapsible-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="collapsible-body" id="llmPanelBody">
+              <div class="llm-panel" id="llmPanel">
+                <p id="llmSummary">未配置外部模型 API，当前使用本地规则引擎。</p>
+                <ul id="llmAnnotations" class="signal-list">
+                  <li>暂无外部模型补充结果</li>
+                </ul>
+              </div>
+              <div class="llm-detail-panel" id="vaguePanel" hidden>
+                <p class="metric-label">模糊表述诊断与改写建议</p>
+                <div id="vagueList"></div>
+              </div>
+              <div class="llm-detail-panel" id="contradictionPanel" hidden>
+                <p class="metric-label">逻辑矛盾检测</p>
+                <div id="contradictionList"></div>
+              </div>
+              <div class="llm-detail-panel" id="credibilityPanel" hidden>
+                <p class="metric-label">声明可信度评估</p>
+                <div id="credibilityList"></div>
+              </div>
+              <div class="llm-detail-panel" id="rewritePanel" hidden>
+                <p class="metric-label">合规改写建议</p>
+                <p id="rewriteContent"></p>
+                <button class="ghost-button" id="copyRewriteButton" type="button">复制改写文本</button>
+              </div>
+            </div>
           </div>
 
-          <div class="llm-detail-panel" id="vaguePanel" hidden>
-            <p class="metric-label">模糊表述诊断与改写建议</p>
-            <div id="vagueList"></div>
-          </div>
-
-          <div class="llm-detail-panel" id="contradictionPanel" hidden>
-            <p class="metric-label">逻辑矛盾检测</p>
-            <div id="contradictionList"></div>
-          </div>
-
-          <div class="llm-detail-panel" id="credibilityPanel" hidden>
-            <p class="metric-label">声明可信度评估</p>
-            <div id="credibilityList"></div>
-          </div>
-
-          <div class="llm-detail-panel" id="rewritePanel" hidden>
-            <p class="metric-label">合规改写建议</p>
-            <p id="rewriteContent"></p>
-            <button class="ghost-button" id="copyRewriteButton" type="button">复制改写文本</button>
-          </div>
-
-          <div class="verification-panel" id="verificationPanel" aria-label="结果自检">
-            <p class="metric-label">结果自检</p>
-            <p id="verificationSummary">分析完成后会显示自动识别和外部模型的自我校验结果。</p>
-            <ul id="verificationChecks" class="signal-list" data-overall="idle">
-              <li>暂无校验结果</li>
-            </ul>
+          <div class="collapsible-section" id="verificationCollapsible">
+            <button class="collapsible-header" type="button" aria-expanded="false" aria-controls="verificationPanelBody">
+              <span class="collapsible-title">结果自检</span>
+              <span class="collapsible-summary" id="verificationCollapsibleSummary">待分析</span>
+              <span class="collapsible-arrow" aria-hidden="true"></span>
+            </button>
+            <div class="collapsible-body" id="verificationPanelBody">
+              <div class="verification-panel" id="verificationPanel" aria-label="结果自检">
+                <p id="verificationSummary">分析完成后会显示自动识别和外部模型的自我校验结果。</p>
+                <ul id="verificationChecks" class="signal-list" data-overall="idle">
+                  <li>暂无校验结果</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </section>
       </section>
@@ -265,6 +350,17 @@
             <button class="ghost-button" id="clearHistoryButton" type="button">清空历史</button>
           </div>
         </div>
+        <div class="history-chart" id="historyChart" hidden>
+          <div class="history-chart-header">
+            <span class="history-chart-title">风险评分趋势</span>
+            <span class="history-chart-subtitle" id="historyChartSubtitle"></span>
+          </div>
+          <svg class="history-chart-svg" id="historyChartSvg" viewBox="0 0 720 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="风险评分趋势图"></svg>
+          <div class="history-chart-legend">
+            <span class="chart-legend-item"><span class="chart-legend-dot chart-legend-score"></span>风险评分</span>
+            <span class="chart-legend-item"><span class="chart-legend-dot chart-legend-avg"></span>移动平均</span>
+          </div>
+        </div>
         <div class="history-summary" id="historySummary" hidden></div>
         <div class="history-list" id="historyList">
           <p class="empty-state">暂无历史记录</p>
@@ -272,8 +368,9 @@
       </section>
     </main>
 
-    <script src="./engine-core.js?v=0.9.0"></script>
-    <script src="./local-engine.js?v=0.9.0"></script>
-    <script src="./app.js?v=0.9.0"></script>
+    <script src="./engine-core.js?v=0.9.0-ui-fix.1"></script>
+    <script src="./local-engine.js?v=0.9.0-ui-fix.1"></script>
+    <script src="./app-utils.js?v=0.9.0-ui-fix.1"></script>
+    <script src="./app.js?v=0.9.0-ui-fix.1"></script>
   </body>
 </html>

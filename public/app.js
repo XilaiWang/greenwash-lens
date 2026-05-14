@@ -9,6 +9,8 @@ const clearHistoryButton = document.querySelector("#clearHistoryButton");
 const historySummaryButton = document.querySelector("#historySummaryButton");
 const historyList = document.querySelector("#historyList");
 const historySummary = document.querySelector("#historySummary");
+const workspace = document.querySelector(".workspace");
+const classificationStatus = document.querySelector("#classificationStatus");
 
 const engineStatus = document.querySelector("#engineStatus");
 const riskGauge = document.querySelector("#riskGauge");
@@ -94,62 +96,32 @@ const DEFAULT_LOCAL_API_BASE = "http://127.0.0.1:5173";
 let latestAnalysis = null;
 let currentJobId = null;
 let currentJobStartedAt = 0;
+let classifyTimer = null;
+let lastClassifiedText = "";
+let classificationRequestId = 0;
+let classificationSelectionMode = {
+  context: contextType?.value === "auto" ? "auto" : "manual",
+  sector: sector?.value === "auto" ? "auto" : "manual",
+};
+let smartClassificationState = null;
+let applyingSmartClassification = false;
 // 当 /analyze-jobs 端点失败时切换到同步 /analyze 路径作为降级
 let preferLegacyAnalyze = false;
 let llmAvailable = false;
+let nlpServiceAvailable = false;
 const apiBase = resolveApiBase();
 const localEngine = window.GreenwashLocal || null;
 const isDesktopMode = new URLSearchParams(window.location.search).get("desktop") === "1";
+const isLocalAppHost = ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname);
 
-function clamp(value, min = 0, max = 100) {
-  return Math.max(min, Math.min(max, value));
-}
+const CSRF_META = document.querySelector('meta[name="csrf-token"]');
+const CSRF_TOKEN = CSRF_META ? CSRF_META.content : "";
 
-function percent(value) {
-  return `${Math.round(value)}%`;
-}
-
-function createEmptyResult() {
-  return {
-    risk: 0,
-    claimProb: 0,
-    confidence: 0,
-    level: "待分析",
-    tone: "green",
-    summary: "输入文本后开始分析。",
-    classification: null,
-    components: {
-      vagueness: 0,
-      evidence: 0,
-      overclaim: 0,
-      promise: 0,
-    },
-    evidence: {
-      quantified: false,
-      timeline: false,
-      proof: false,
-      action: false,
-      scope: false,
-    },
-    factors: ["暂无结果"],
-    signals: ["暂无结果"],
-    emotionAnalysis: createEmptyEmotionAnalysis(),
-  };
-}
-
-function createEmptyEmotionAnalysis() {
-  return {
-    finalScore: 0,
-    level: "none",
-    consistency: 0,
-    layersUsed: 1,
-    breakdown: {
-      rule: 0,
-      nlp: null,
-      llm: null,
-    },
-    nlpDetail: null,
-  };
+function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (CSRF_TOKEN) headers.set("X-CSRF-Token", CSRF_TOKEN);
+  headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+  return fetch(url, { ...options, headers });
 }
 
 async function analyzeText() {
@@ -158,6 +130,9 @@ async function analyzeText() {
   if (!text) {
     latestAnalysis = null;
     exportButton.disabled = true;
+    clearTimeout(classifyTimer);
+    lastClassifiedText = "";
+    setClassificationStatus("添加内容后自动判断场景和行业");
     renderResult(createEmptyResult());
     renderLlm(null, null);
     renderLlmDetails(null);
@@ -186,18 +161,14 @@ async function analyzeText() {
   renderVerification(null);
 
   try {
-    const requestPayload = {
-      text,
-      contextType: contextType.value,
-      sector: sector.value,
-    };
+    const requestPayload = buildAnalysisRequestPayload(text);
 
     if (preferLegacyAnalyze) {
       await runLegacyAnalysis(requestPayload);
       return;
     }
 
-    const response = await fetch(apiUrl("/api/v1/analyze-jobs"), {
+    const response = await apiFetch(apiUrl("/api/v1/analyze-jobs"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -240,7 +211,7 @@ async function pollJob(jobId, requestPayload) {
       throw new Error("分析耗时过长，已停止等待。你可以稍后重试，或先关闭外部模型增强。");
     }
 
-    const response = await fetch(apiUrl(`/api/v1/analyze-jobs/${encodeURIComponent(jobId)}`));
+    const response = await apiFetch(apiUrl(`/api/v1/analyze-jobs/${encodeURIComponent(jobId)}`));
     const job = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -295,6 +266,8 @@ function renderJobSnapshot(job) {
     allowClientVerification: job.status === "completed",
   });
   if (!payload) return;
+
+  document.querySelector(".result-panel").classList.remove("analyzing");
 
   if (payload.result) {
     renderResult(payload.result);
@@ -351,7 +324,7 @@ function failAnalysis(message) {
 
 async function loadHistory() {
   try {
-    const response = await fetch(apiUrl("/api/history?limit=12"));
+    const response = await apiFetch(apiUrl("/api/history?limit=12"));
     const payload = await response.json();
 
     if (!response.ok) {
@@ -368,11 +341,122 @@ async function loadHistory() {
   }
 }
 
+function renderTrendChart(items) {
+  const chart = document.getElementById("historyChart");
+  const svg = document.getElementById("historyChartSvg");
+  const subtitle = document.getElementById("historyChartSubtitle");
+  if (!chart || !svg) return;
+
+  const sorted = [...items].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const scores = sorted.map((item) => item.result.risk);
+  const dates = sorted.map((item) => {
+    const d = new Date(item.createdAt);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  });
+
+  if (scores.length < 2) {
+    chart.hidden = true;
+    return;
+  }
+
+  chart.hidden = false;
+  if (subtitle) subtitle.textContent = `最近 ${scores.length} 次分析`;
+
+  const W = 720, H = 200;
+  const padLeft = 42, padRight = 16, padTop = 16, padBottom = 22;
+  const plotW = W - padLeft - padRight;
+  const plotH = H - padTop - padBottom;
+
+  const xScale = (i) => padLeft + (i / Math.max(scores.length - 1, 1)) * plotW;
+  const yScale = (v) => padTop + plotH - (v / 100) * plotH;
+
+  let svgContent = "";
+
+  // Grid lines and Y labels
+  [0, 25, 50, 75, 100].forEach((val) => {
+    const y = yScale(val);
+    svgContent += `<line class="chart-grid-line" x1="${padLeft}" y1="${y}" x2="${W - padRight}" y2="${y}"/>`;
+    svgContent += `<text class="chart-axis-label chart-axis-label-right" x="${padLeft - 6}" y="${y + 4}">${val}</text>`;
+  });
+
+  // X labels
+  scores.forEach((_, i) => {
+    if (scores.length <= 6 || i % Math.ceil(scores.length / 6) === 0 || i === scores.length - 1) {
+      const x = xScale(i);
+      svgContent += `<text class="chart-axis-label chart-axis-label-center" x="${x}" y="${H - 4}">${dates[i]}</text>`;
+    }
+  });
+
+  // Moving average (3-period SMA)
+  const sma = [];
+  for (let i = 0; i < scores.length; i++) {
+    const window = scores.slice(Math.max(0, i - 1), Math.min(scores.length, i + 2));
+    sma.push(Math.round(window.reduce((a, b) => a + b, 0) / window.length));
+  }
+
+  // SMA line
+  let smaPath = "";
+  sma.forEach((val, i) => {
+    smaPath += `${i === 0 ? "M" : "L"}${xScale(i)} ${yScale(val)} `;
+  });
+  svgContent += `<path class="chart-avg-line" d="${smaPath.trim()}"/>`;
+
+  // Risk score line
+  let scorePath = "";
+  scores.forEach((val, i) => {
+    scorePath += `${i === 0 ? "M" : "L"}${xScale(i)} ${yScale(val)} `;
+  });
+  svgContent += `<path class="chart-score-line" d="${scorePath.trim()}"/>`;
+
+  // Data points
+  scores.forEach((val, i) => {
+    const x = xScale(i), y = yScale(val);
+    svgContent += `<circle class="chart-dot chart-dot-circle" cx="${x}" cy="${y}" r="3.5" data-score="${val}" data-date="${dates[i]}"/>`;
+  });
+
+  svg.innerHTML = svgContent;
+
+  // Tooltip
+  setupChartTooltip(svg, chart);
+}
+
+function setupChartTooltip(svg, container) {
+  let tooltip = document.querySelector(".chart-tooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    tooltip.hidden = true;
+    container.style.position = "relative";
+    container.append(tooltip);
+  }
+
+  svg.querySelectorAll(".chart-dot").forEach((dot) => {
+    dot.addEventListener("mouseenter", (e) => {
+      const score = dot.getAttribute("data-score");
+      const date = dot.getAttribute("data-date");
+      tooltip.textContent = `${date} · ${score}%`;
+      tooltip.hidden = false;
+    });
+    dot.addEventListener("mousemove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      const svgX = e.clientX - rect.left;
+      const percentX = svgX / rect.width;
+      tooltip.style.left = (percentX * 100) + "%";
+      tooltip.style.top = (e.clientY - rect.top - 12) + "px";
+    });
+    dot.addEventListener("mouseleave", () => {
+      tooltip.hidden = true;
+    });
+  });
+}
+
 function renderHistory(items) {
   historyList.innerHTML = "";
 
   if (!items.length) {
     historySummary.hidden = true;
+    const chart = document.getElementById("historyChart");
+    if (chart) chart.hidden = true;
     const empty = document.createElement("p");
     empty.className = "empty-state";
     empty.textContent = "暂无历史记录";
@@ -380,12 +464,14 @@ function renderHistory(items) {
     return;
   }
 
+  renderTrendChart(items);
+
   items.forEach((item) => {
     const wrapper = document.createElement("div");
     const openButton = document.createElement("button");
     const deleteButton = document.createElement("button");
     const preview =
-      item.request.text.length > 86 ? `${item.request.text.slice(0, 86)}...` : item.request.text;
+      item.request.text.length > 140 ? `${item.request.text.slice(0, 140)}...` : item.request.text;
 
     wrapper.className = "history-item";
     wrapper.dataset.id = item.id;
@@ -416,12 +502,181 @@ function renderHistory(items) {
   });
 }
 
+function setClassificationStatus(message, state = "idle") {
+  if (!classificationStatus) return;
+  classificationStatus.textContent = message;
+  classificationStatus.dataset.state = state;
+}
+
+function isManualClassificationField(field) {
+  const select = field === "context" ? contextType : sector;
+  return classificationSelectionMode[field] === "manual" && select.value !== "auto";
+}
+
+function hasSmartClassificationForField(field) {
+  if (!smartClassificationState) return false;
+  const text = textArea.value.trim();
+  const key = field === "context" ? "contextType" : "sector";
+  const autoKey = field === "context" ? "contextAuto" : "sectorAuto";
+  const select = field === "context" ? contextType : sector;
+  return smartClassificationState[autoKey] !== false &&
+    smartClassificationState.text === text &&
+    smartClassificationState[key] === select.value;
+}
+
+function getClassificationRequestValue(field) {
+  if (hasSmartClassificationForField(field)) {
+    return "auto";
+  }
+
+  const select = field === "context" ? contextType : sector;
+  return isManualClassificationField(field) ? select.value : "auto";
+}
+
+function buildAnalysisRequestPayload(text) {
+  return {
+    text,
+    contextType: getClassificationRequestValue("context"),
+    sector: getClassificationRequestValue("sector"),
+  };
+}
+
+function resetClassificationControls({ resetSelects = false } = {}) {
+  clearTimeout(classifyTimer);
+  lastClassifiedText = "";
+  classificationSelectionMode = {
+    context: "auto",
+    sector: "auto",
+  };
+  smartClassificationState = null;
+  if (resetSelects) {
+    contextType.value = "auto";
+    sector.value = "auto";
+  }
+}
+
+function scheduleSmartClassification() {
+  clearTimeout(classifyTimer);
+  const text = textArea.value.trim();
+
+  if (text.length < 80) {
+    setClassificationStatus("添加内容后自动判断场景和行业");
+    return;
+  }
+
+  if (isManualClassificationField("context") && isManualClassificationField("sector")) {
+    setClassificationStatus("使用当前手动选择的场景和行业");
+    return;
+  }
+
+  setClassificationStatus("输入停止后自动识别场景和行业", "loading");
+  classifyTimer = setTimeout(() => {
+    classifyCurrentText({ reason: "typing" });
+  }, 1200);
+}
+
+async function classifyCurrentText({ force = false, reason = "text" } = {}) {
+  const text = textArea.value.trim();
+
+  if (!text || text.length < 20) {
+    setClassificationStatus("添加内容后自动判断场景和行业");
+    return null;
+  }
+
+  if (!force && text === lastClassifiedText) {
+    return null;
+  }
+
+  const requestPayload = buildAnalysisRequestPayload(text);
+
+  if (!force && requestPayload.contextType !== "auto" && requestPayload.sector !== "auto") {
+    setClassificationStatus("使用当前手动选择的场景和行业");
+    return null;
+  }
+
+  const requestId = ++classificationRequestId;
+  lastClassifiedText = text;
+  setClassificationStatus(
+    reason === "pdf" ? "PDF 已提取，正在用 AI 识别场景和行业..." : "正在用 AI 识别场景和行业...",
+    "loading",
+  );
+
+  try {
+    const response = await apiFetch(apiUrl("/api/v1/classify"), {
+      method: "POST",
+      body: JSON.stringify({
+        text,
+        contextType: requestPayload.contextType,
+        sector: requestPayload.sector,
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(payload?.error || "自动识别失败");
+    }
+
+    if (requestId !== classificationRequestId || !payload?.classification) {
+      return null;
+    }
+
+    const classification = payload.classification;
+    applyingSmartClassification = true;
+    try {
+      if (classification.context?.selected) {
+        contextType.value = classification.context.selected;
+        classificationSelectionMode.context = requestPayload.contextType === "auto" ? "auto" : "manual";
+      }
+      if (classification.sector?.selected) {
+        sector.value = classification.sector.selected;
+        classificationSelectionMode.sector = requestPayload.sector === "auto" ? "auto" : "manual";
+      }
+    } finally {
+      applyingSmartClassification = false;
+    }
+    smartClassificationState = {
+      text,
+      contextType: classification.context?.selected || contextType.value,
+      sector: classification.sector?.selected || sector.value,
+      contextAuto: requestPayload.contextType === "auto",
+      sectorAuto: requestPayload.sector === "auto",
+    };
+
+    const contextLabel = classification.context?.label || labelForContext(contextType.value);
+    const sectorLabel = classification.sector?.label || labelForSector(sector.value);
+    const methodLabel = payload.method === "llm" ? "AI" : "本地";
+    setClassificationStatus(`${methodLabel}已识别：${contextLabel} · ${sectorLabel}`, "success");
+    renderClassification(classification);
+    return classification;
+  } catch (error) {
+    if (requestId === classificationRequestId) {
+      setClassificationStatus(error.message || "自动识别暂不可用，将在分析时识别", "error");
+    }
+    return null;
+  }
+}
+
 function restoreHistoryItem(item) {
   const payload = normalizePayload(item, { allowClientVerification: true });
 
   textArea.value = item.request.text;
+  updatePdfUploadVisibility();
   contextType.value = item.request.contextType || "auto";
   sector.value = item.request.sector || "auto";
+  classificationSelectionMode = {
+    context: item.classification?.context?.source === "manual" ? "manual" : "auto",
+    sector: item.classification?.sector?.source === "manual" ? "manual" : "auto",
+  };
+  smartClassificationState =
+    item.classification?.context?.source === "manual" && item.classification?.sector?.source === "manual"
+      ? null
+      : {
+          text: item.request.text,
+          contextType: item.classification?.context?.selected || contextType.value,
+          sector: item.classification?.sector?.selected || sector.value,
+          contextAuto: item.classification?.context?.source !== "manual",
+          sectorAuto: item.classification?.sector?.source !== "manual",
+        };
   latestAnalysis = payload;
   exportButton.disabled = false;
   renderResult(payload.result);
@@ -438,7 +693,7 @@ function restoreHistoryItem(item) {
 
 async function clearHistory() {
   try {
-    const response = await fetch(apiUrl("/api/history"), { method: "DELETE" });
+    const response = await apiFetch(apiUrl("/api/history"), { method: "DELETE" });
 
     if (!response.ok) {
       const payload = await response.json();
@@ -461,7 +716,7 @@ async function clearHistory() {
 
 async function removeHistoryItem(id, element) {
   try {
-    const response = await fetch(apiUrl(`/api/v1/history/${encodeURIComponent(id)}`), {
+    const response = await apiFetch(apiUrl(`/api/v1/history/${encodeURIComponent(id)}`), {
       method: "DELETE",
     });
 
@@ -487,6 +742,24 @@ async function removeHistoryItem(id, element) {
   }
 }
 
+function animateValue(element, start, end, duration, formatFn) {
+  if (start === end) {
+    element.textContent = formatFn ? formatFn(end) : end;
+    return;
+  }
+  const range = end - start;
+  const startTime = performance.now();
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(start + range * eased);
+    element.textContent = formatFn ? formatFn(current) : current;
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
 function renderResult(result) {
   const colorMap = {
     green: "var(--green)",
@@ -495,9 +768,12 @@ function renderResult(result) {
     red: "var(--red)",
   };
 
-  riskGauge.style.setProperty("--score", Math.round(result.risk));
+  const currentScore = parseInt(riskScore.textContent) || 0;
+  const targetScore = Math.round(result.risk);
+
+  riskGauge.style.setProperty("--score", targetScore);
   riskGauge.style.setProperty("--gauge-color", colorMap[result.tone] || "var(--muted)");
-  riskScore.textContent = percent(result.risk);
+  animateValue(riskScore, currentScore, targetScore, 500, (v) => `${v}%`);
   riskLevel.textContent = result.level;
   summaryText.textContent = result.summary;
   renderClassification(result.classification);
@@ -525,19 +801,57 @@ function renderEmotionAnalysis(emotion) {
   const finalScore = Math.round(Number(emotion?.finalScore || 0));
   const level = emotion?.level || "none";
   const consistency = Math.round(Number(emotion?.consistency || 0));
+  const layersUsed = Number(emotion?.layersUsed || 0);
+  const levelLabelMap = {
+    none: "无明显风险",
+    low: "低",
+    medium: "中",
+    high: "高",
+  };
+  const plainExplainMap = {
+    none: "未检测到明显的情感操控倾向，文本语气较为中性客观。",
+    low: "文本带有轻微的正面情感色彩，属于正常的品牌表达范畴。",
+    medium: "文本存在一定的情感诉求策略，可能试图通过情绪引导影响判断，建议结合具体措辞复核。",
+    high: "文本情感操控倾向显著，大量使用高度情绪化的表达，可能存在误导性渲染。",
+  };
 
   emotionPanel.dataset.level = level;
-  emotionScore.textContent = finalScore;
-  emotionLevel.textContent = level;
-  emotionWarning.hidden = consistency >= 60 || !emotion?.layersUsed;
+  emotionScore.textContent = layersUsed ? String(finalScore) : "--";
+  emotionLevel.textContent = layersUsed ? levelLabelMap[level] || "待分析" : "待分析";
+  emotionWarning.hidden = consistency >= 60 || layersUsed < 2;
+
+  const plainExplain = document.getElementById("emotionPlainExplain");
+  if (plainExplain) {
+    plainExplain.textContent = layersUsed
+      ? (plainExplainMap[level] || plainExplainMap.none)
+      : "分析完成后，这里会用通俗语言解释文本的情绪倾向。";
+  }
 
   updateEmotionBar(emotionRuleBar, emotionRuleValue, breakdown.rule, "0");
-  updateEmotionBar(emotionNlpBar, emotionNlpValue, breakdown.nlp, "NLP 服务离线");
+  updateEmotionBar(emotionNlpBar, emotionNlpValue, breakdown.nlp, "--");
   updateEmotionBar(emotionLlmBar, emotionLlmValue, breakdown.llm, "0");
 
-  emotionConsistency.textContent = `一致性：${consistency}%`;
-  emotionLayers.textContent = `使用层数：${emotion?.layersUsed || 0}`;
-  renderEmotionNlpDetail(emotion?.nlpDetail || null);
+  emotionConsistency.textContent =
+    layersUsed >= 2 ? `一致性：${consistency}%` : layersUsed === 1 ? "一致性：待计算" : "一致性：待分析";
+  emotionLayers.textContent = layersUsed ? `使用层数：${layersUsed}` : "使用层数：待分析";
+  renderEmotionNlpDetail(emotion?.nlpDetail || null, {
+    nlpAvailable: breakdown.nlp !== null,
+    layersUsed,
+  });
+
+  const summary = document.getElementById("emotionCollapsibleSummary");
+  if (summary) {
+    if (!layersUsed) {
+      summary.textContent = "待分析";
+    } else if (level === "high") {
+      summary.textContent = `情绪风险高 · ${finalScore}分 · 建议复核`;
+    } else if (level === "medium") {
+      summary.textContent = `情绪风险中 · ${finalScore}分`;
+    } else {
+      summary.textContent = `情绪风险低 · ${finalScore}分`;
+    }
+  }
+  if (layersUsed > 0) autoExpandCollapsible("emotionCollapsible");
 }
 
 function updateEmotionBar(bar, valueElement, value, fallbackText) {
@@ -553,9 +867,24 @@ function updateEmotionBar(bar, valueElement, value, fallbackText) {
   valueElement.textContent = String(score);
 }
 
-function renderEmotionNlpDetail(detail) {
+function renderEmotionNlpDetail(detail, options = {}) {
   if (!emotionNlpDetail) return;
   emotionNlpDetail.innerHTML = "";
+  const { nlpAvailable, layersUsed = 0 } = options;
+
+  if (!layersUsed) {
+    emotionNlpDetail.hidden = true;
+    return;
+  }
+
+  if (!detail && !nlpAvailable) {
+    emotionNlpDetail.hidden = false;
+    const tag = document.createElement("span");
+    tag.textContent = nlpServiceAvailable ? "NLP 层本轮未参与" : "NLP 服务离线";
+    emotionNlpDetail.append(tag);
+    return;
+  }
+
   emotionNlpDetail.hidden = !detail;
   if (!detail) return;
 
@@ -578,15 +907,19 @@ function renderLlm(llm, serviceStatus) {
 
   llmPanel.dataset.enabled = llm?.enabled ? "true" : "false";
 
+  const summary = document.getElementById("llmCollapsibleSummary");
+
   if (!llm) {
     llmSummary.textContent = "未配置外部模型 API，当前使用本地规则引擎。";
     renderList(llmAnnotations, ["暂无外部模型补充结果"]);
+    if (summary) summary.textContent = "未配置外部模型";
     return;
   }
 
   if (llm.error) {
     llmSummary.textContent = `${provider} 调用失败：${llm.error}`;
     renderList(llmAnnotations, ["本地规则引擎结果仍然可用。"]);
+    if (summary) summary.textContent = `${provider} 调用失败`;
     return;
   }
 
@@ -597,6 +930,13 @@ function renderLlm(llm, serviceStatus) {
     llmAnnotations,
     llm.annotations && llm.annotations.length ? llm.annotations : ["暂无外部模型补充结果"],
   );
+
+  if (summary) {
+    summary.textContent = llm.enabled
+      ? `${provider} · ${llm.model}`
+      : "外部模型未启用";
+  }
+  if (llm.enabled) autoExpandCollapsible("llmCollapsible");
 }
 
 function renderLlmDetails(llm) {
@@ -702,10 +1042,13 @@ function renderRewriteSuggestion(text) {
 function renderVerification(verification) {
   if (!verificationSummary || !verificationChecks) return;
 
+  const summary = document.getElementById("verificationCollapsibleSummary");
+
   if (!verification) {
     verificationSummary.textContent = "分析完成后会显示自动识别和外部模型的自我校验结果。";
     renderList(verificationChecks, ["暂无校验结果"]);
     verificationChecks.dataset.overall = "idle";
+    if (summary) summary.textContent = "待分析";
     return;
   }
 
@@ -721,6 +1064,12 @@ function renderVerification(verification) {
     verificationChecks,
     verification.checks.map((check) => `${verificationStatusLabel(check.status)} ${check.title}：${check.message}`),
   );
+
+  const overallLabel = { pass: "通过", warn: "提示", fail: "异常" };
+  if (summary) {
+    summary.textContent = `${overallLabel[verification.overall] || "已完成"} · ${verification.checks.length}项校验`;
+  }
+  autoExpandCollapsible("verificationCollapsible");
 }
 
 function renderProgress(job) {
@@ -761,7 +1110,7 @@ async function runLegacyAnalysis(requestPayload) {
   let response = null;
 
   try {
-    response = await fetch(apiUrl("/api/v1/analyze"), {
+    response = await apiFetch(apiUrl("/api/v1/analyze"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -770,7 +1119,7 @@ async function runLegacyAnalysis(requestPayload) {
     });
 
     if (response.status === 404) {
-      response = await fetch(apiUrl("/api/analyze"), {
+      response = await apiFetch(apiUrl("/api/analyze"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -903,7 +1252,7 @@ function renderClassification(classification) {
   }
 
   const sourceLabel = (source) => {
-    if (source === "llm") return "LLM";
+    if (source === "llm") return "AI";
     if (source === "manual") return "手动";
     return "关键词";
   };
@@ -941,8 +1290,29 @@ function renderList(target, items) {
 
 function setBusy(isBusy) {
   const submitButton = form.querySelector("button[type='submit']");
+  const resultPanel = document.querySelector(".result-panel");
   submitButton.disabled = isBusy;
-  submitButton.textContent = isBusy ? "分析中" : "分析";
+  submitButton.textContent = isBusy ? "分析中" : "开始分析";
+  if (isBusy) {
+    resultPanel.classList.add("analyzing");
+    hideWelcome();
+  } else {
+    resultPanel.classList.remove("analyzing");
+  }
+}
+
+function hideWelcome() {
+  const welcomePanel = document.getElementById("welcomePanel");
+  const resultPanel = document.querySelector(".result-panel");
+  if (welcomePanel) welcomePanel.hidden = true;
+  if (resultPanel) resultPanel.classList.add("has-results");
+}
+
+function showWelcome() {
+  const welcomePanel = document.getElementById("welcomePanel");
+  const resultPanel = document.querySelector(".result-panel");
+  if (welcomePanel) welcomePanel.hidden = false;
+  if (resultPanel) resultPanel.classList.remove("has-results");
 }
 
 function exportLatestAnalysis() {
@@ -965,20 +1335,26 @@ function exportLatestAnalysis() {
 
 async function loadHealth() {
   try {
-    const response = await fetch(apiUrl("/api/health"));
+    const response = await apiFetch(apiUrl("/api/health"));
     const payload = await response.json();
     llmAvailable = Boolean(payload.llmService?.enabled);
+    nlpServiceAvailable = Boolean(payload.nlpService?.available);
     engineStatus.textContent = `应用已连接 · ${payload.engineVersion}`;
+    if (payload.storage?.historyEnabled === false) {
+      engineStatus.textContent += " · 历史已关闭";
+    }
     updateHistorySummaryButton();
   } catch {
     if (localEngine) {
       const payload = localEngine.health();
       llmAvailable = Boolean(payload.llmService?.enabled);
+      nlpServiceAvailable = Boolean(payload.nlpService?.available);
       engineStatus.textContent = `离线可用 · ${payload.engineVersion}`;
       updateHistorySummaryButton();
       return;
     }
     llmAvailable = false;
+    nlpServiceAvailable = false;
     engineStatus.textContent = fileModeHint();
     updateHistorySummaryButton();
   }
@@ -996,7 +1372,7 @@ async function summarizeHistoryTrends() {
   try {
     historySummary.hidden = false;
     historySummary.textContent = "正在生成趋势分析...";
-    const response = await fetch(apiUrl("/api/v1/history/summary"), {
+    const response = await apiFetch(apiUrl("/api/v1/history/summary"), {
       method: "POST",
     });
     const payload = await response.json().catch(() => null);
@@ -1022,7 +1398,7 @@ function registerServiceWorker() {
     return;
   }
 
-  if (isDesktopMode) {
+  if (isDesktopMode || isLocalAppHost) {
     navigator.serviceWorker.getRegistrations()
       .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
       .catch(() => {});
@@ -1302,6 +1678,38 @@ function buildClientClassificationCheck(title, part) {
   };
 }
 
+function setupThemeToggle() {
+  const toggle = document.getElementById("themeToggle");
+  if (!toggle) return;
+
+  const stored = localStorage.getItem("greenwash-theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = stored || (prefersDark ? "dark" : "light");
+
+  applyTheme(theme);
+
+  toggle.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme");
+    const next = current === "dark" ? "light" : "dark";
+    applyTheme(next);
+    localStorage.setItem("greenwash-theme", next);
+  });
+
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+    if (!localStorage.getItem("greenwash-theme")) {
+      applyTheme(e.matches ? "dark" : "light");
+    }
+  });
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.content = theme === "dark" ? "#121817" : "#177e89";
+  }
+}
+
 function setupPdfUpload() {
   if (!pdfUploadZone || !pdfFileInput || !pdfUploadStatus) return;
 
@@ -1362,7 +1770,7 @@ async function handlePdfFile(file) {
   setPdfUploadState("processing", "正在提取文字...");
 
   try {
-    const response = await fetch(apiUrl("/api/v1/upload-pdf"), {
+    const response = await apiFetch(apiUrl("/api/v1/upload-pdf"), {
       method: "POST",
       headers: {
         "Content-Type": "application/pdf",
@@ -1377,17 +1785,19 @@ async function handlePdfFile(file) {
       throw new Error(data?.error || "PDF 文字提取失败");
     }
 
+    resetClassificationControls({ resetSelects: true });
     textArea.value = data.text;
+    updatePdfUploadVisibility();
     renderDocument(data.document || null);
     const engineLabel = data.engine === "poppler" ? "系统引擎" : "JS 引擎";
     const warnings = data.warnings || [];
-    const stats = data.stats || {};
-    let statusMsg = `已提取 ${data.text.length} 个字符（${engineLabel}）`;
+    let statusMsg = `已提取 ${data.text.length} 个字符 · ${engineLabel}`;
     if (warnings.length) {
-      statusMsg += ` · ${warnings.join(" ")}`;
+      statusMsg += " · 已优化长文档";
     }
     statusMsg += ` · ${file.name}`;
     setPdfUploadState("success", statusMsg);
+    await classifyCurrentText({ force: true, reason: "pdf" });
     setTimeout(() => setPdfUploadState("idle"), warnings.length ? 8000 : 5000);
   } catch (error) {
     setPdfUploadState("error", error.message || "提取失败，请重试。");
@@ -1403,10 +1813,12 @@ function renderDocument(doc) {
 
   if (!doc || !doc.length) {
     docViewer.hidden = true;
+    workspace?.classList.remove("has-document");
     return;
   }
 
   docViewer.hidden = false;
+  workspace?.classList.add("has-document");
   docViewerBody.innerHTML = "";
 
   doc.forEach((block) => {
@@ -1461,28 +1873,92 @@ function applyHighlights(signals) {
   while (walker.nextNode()) textNodes.push(walker.currentNode);
 
   textNodes.forEach((node) => {
-    let html = node.textContent;
-    let changed = false;
+    const text = node.textContent;
+    const matches = [];
+
     signalMap.forEach((cssClass, term) => {
       const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const regex = new RegExp(`(${escaped})`, "gi");
-      if (regex.test(html)) {
-        html = html.replace(regex, `<mark class="${cssClass}">$1</mark>`);
-        changed = true;
+      const regex = new RegExp(escaped, "gi");
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({ start: match.index, end: match.index + match[0].length, cssClass });
       }
     });
-    if (changed) {
-      const span = document.createElement("span");
-      span.innerHTML = html;
-      node.parentNode.replaceChild(span, node);
+
+    if (!matches.length) return;
+
+    matches.sort((a, b) => a.start - b.start);
+
+    const merged = [];
+    for (const m of matches) {
+      const last = merged[merged.length - 1];
+      if (last && last.end >= m.start) {
+        last.end = Math.max(last.end, m.end);
+        if (!last.classes) last.classes = [last.cssClass];
+        if (!last.classes.includes(m.cssClass)) last.classes.push(m.cssClass);
+      } else {
+        merged.push({ start: m.start, end: m.end, cssClass: m.cssClass });
+      }
     }
+
+    const fragment = document.createDocumentFragment();
+    let pos = 0;
+    for (const m of merged) {
+      if (m.start > pos) {
+        fragment.appendChild(document.createTextNode(text.slice(pos, m.start)));
+      }
+      const mark = document.createElement("mark");
+      mark.className = m.classes ? m.classes.join(" ") : m.cssClass;
+      mark.textContent = text.slice(m.start, m.end);
+      fragment.appendChild(mark);
+      pos = m.end;
+    }
+    if (pos < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(pos)));
+    }
+
+    node.parentNode.replaceChild(fragment, node);
   });
 }
 
 docViewerClose.addEventListener("click", () => {
   if (docViewer) docViewer.hidden = true;
   currentDocument = null;
+  workspace?.classList.remove("has-document");
   if (docViewerBody) docViewerBody.innerHTML = "";
+});
+
+function updatePdfUploadVisibility() {
+  if (!pdfUploadZone) return;
+  pdfUploadZone.classList.toggle("has-text", textArea.value.trim().length > 0);
+}
+
+textArea.addEventListener("input", () => {
+  updatePdfUploadVisibility();
+  scheduleSmartClassification();
+});
+
+[contextType, sector].forEach((select) => {
+  select.addEventListener("change", () => {
+    if (applyingSmartClassification) {
+      return;
+    }
+
+    smartClassificationState = null;
+    if (select === contextType) {
+      classificationSelectionMode.context = contextType.value === "auto" ? "auto" : "manual";
+    }
+    if (select === sector) {
+      classificationSelectionMode.sector = sector.value === "auto" ? "auto" : "manual";
+    }
+    lastClassifiedText = "";
+
+    if (!isManualClassificationField("context") || !isManualClassificationField("sector")) {
+      scheduleSmartClassification();
+      return;
+    }
+    setClassificationStatus("使用当前手动选择的场景和行业");
+  });
 });
 
 function setPdfUploadState(state, message) {
@@ -1499,23 +1975,100 @@ function setPdfUploadState(state, message) {
   }
 }
 
+function setupCollapsibles() {
+  document.querySelectorAll(".collapsible-section").forEach((section) => {
+    const header = section.querySelector(".collapsible-header");
+    const body = section.querySelector(".collapsible-body");
+    if (!header || !body) return;
+
+    header.addEventListener("click", () => {
+      const isOpen = section.classList.contains("open");
+      if (isOpen) {
+        collapseSection(section, body);
+      } else {
+        expandSection(section, body);
+      }
+    });
+  });
+}
+
+function expandSection(section, body) {
+  section.classList.add("open");
+  section.querySelector(".collapsible-header").setAttribute("aria-expanded", "true");
+  const inner = body.querySelector(".collapsible-body-inner") || body.firstElementChild;
+  const contentHeight = inner ? inner.scrollHeight : body.scrollHeight;
+  body.style.maxHeight = (contentHeight + 16) + "px";
+}
+
+function collapseSection(section, body) {
+  section.classList.remove("open");
+  section.querySelector(".collapsible-header").setAttribute("aria-expanded", "false");
+  body.style.maxHeight = "0";
+}
+
+function autoExpandCollapsible(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  const body = section.querySelector(".collapsible-body");
+  if (!body) return;
+  if (section.classList.contains("open")) {
+    const inner = body.querySelector(".collapsible-body-inner") || body.firstElementChild;
+    const contentHeight = inner ? inner.scrollHeight : body.scrollHeight;
+    body.style.maxHeight = (contentHeight + 16) + "px";
+    return;
+  }
+  expandSection(section, body);
+}
+
+function resetAllCollapsibles() {
+  document.querySelectorAll(".collapsible-section.open").forEach((section) => {
+    const body = section.querySelector(".collapsible-body");
+    if (body) collapseSection(section, body);
+  });
+  const emotionSummary = document.getElementById("emotionCollapsibleSummary");
+  const llmSummary = document.getElementById("llmCollapsibleSummary");
+  const verificationSummary = document.getElementById("verificationCollapsibleSummary");
+  if (emotionSummary) emotionSummary.textContent = "待分析";
+  if (llmSummary) llmSummary.textContent = "未配置外部模型";
+  if (verificationSummary) verificationSummary.textContent = "待分析";
+}
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   analyzeText();
 });
 
 sampleButton.addEventListener("click", () => {
+  resetClassificationControls({ resetSelects: true });
   textArea.value = sampleText;
+  updatePdfUploadVisibility();
+  classifyCurrentText({ force: true, reason: "sample" });
   form.requestSubmit();
 });
+
+const welcomeTryButton = document.getElementById("welcomeTryButton");
+if (welcomeTryButton) {
+  welcomeTryButton.addEventListener("click", () => {
+    resetClassificationControls({ resetSelects: true });
+    textArea.value = sampleText;
+    updatePdfUploadVisibility();
+    classifyCurrentText({ force: true, reason: "sample" });
+    form.requestSubmit();
+  });
+}
 
 clearButton.addEventListener("click", () => {
   textArea.value = "";
   latestAnalysis = null;
   currentDocument = null;
+  resetClassificationControls({ resetSelects: true });
+  setClassificationStatus("添加内容后自动判断场景和行业");
   exportButton.disabled = true;
   if (docViewer) docViewer.hidden = true;
+  workspace?.classList.remove("has-document");
   if (docViewerBody) docViewerBody.innerHTML = "";
+  document.querySelector(".result-panel").classList.remove("analyzing");
+  showWelcome();
   renderResult(createEmptyResult());
   renderLlm(null, null);
   renderLlmDetails(null);
@@ -1526,11 +2079,17 @@ clearButton.addEventListener("click", () => {
     progress: 0,
     message: "输入文本后开始分析。",
   });
+  resetAllCollapsibles();
+  updatePdfUploadVisibility();
   textArea.focus();
 });
 
 exportButton.addEventListener("click", exportLatestAnalysis);
-clearHistoryButton.addEventListener("click", clearHistory);
+clearHistoryButton.addEventListener("click", () => {
+  if (confirm("确定要清空所有检测历史吗？此操作不可撤销。")) {
+    clearHistory();
+  }
+});
 historySummaryButton.addEventListener("click", summarizeHistoryTrends);
 copyRewriteButton.addEventListener("click", async () => {
   if (!rewriteContent.textContent) return;
@@ -1554,7 +2113,10 @@ renderProgress({
   message: "输入文本后开始分析。",
 });
 exportButton.disabled = true;
+setupCollapsibles();
+updatePdfUploadVisibility();
 loadHealth();
 loadHistory();
 registerServiceWorker();
 setupPdfUpload();
+setupThemeToggle();

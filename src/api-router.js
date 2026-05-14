@@ -2,6 +2,8 @@ const { ENGINE_VERSION } = require("./greenwash-engine");
 const { readJson, readRawBody, sendJson } = require("./http-utils");
 const {
   classifyText,
+  CONTEXT_LABELS,
+  SECTOR_LABELS,
   VALID_CONTEXT_TYPES,
   VALID_SECTORS,
 } = require("./text-classifier");
@@ -13,6 +15,7 @@ const {
 } = require("./history-store");
 const { analyzeText } = require("./services/analysis-service");
 const {
+  classifyWithLLM,
   getServiceStatus,
   summarizeHistory,
   testLlmConnection,
@@ -22,8 +25,14 @@ const { createAnalysisJob, getJob } = require("./analysis-jobs");
 const { extractFromBuffer } = require("./pdf-extractor");
 const { MAX_TEXT_LENGTH } = require("./pdf-cleaner");
 
-async function handleApi(request, response, url) {
+async function handleApi(request, response, url, csrfToken) {
   const pathname = normalizeApiPath(url.pathname);
+
+  if ((request.method === "POST" || request.method === "DELETE") &&
+      request.headers["x-csrf-token"] !== csrfToken) {
+    sendJson(response, 403, { error: "缺少或无效的 CSRF 令牌。" });
+    return true;
+  }
 
   if (request.method === "GET" && pathname === "/health") {
     sendJson(response, 200, {
@@ -61,11 +70,23 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && pathname === "/classify") {
     const body = await readJson(request);
     const normalized = validateAnalysisInput(body);
-    sendJson(response, 200, {
-      classification: classifyText(normalized.text, {
+    let classification = classifyText(normalized.text, {
+      contextType: normalized.contextType,
+      sector: normalized.sector,
+    });
+    const llmClassify = await classifyWithLLM(normalized.text);
+
+    if (llmClassify) {
+      classification = mergeClassification(classification, llmClassify, {
         contextType: normalized.contextType,
         sector: normalized.sector,
-      }),
+      });
+    }
+
+    sendJson(response, 200, {
+      classification,
+      method: llmClassify ? "llm" : "keyword",
+      llmService: getServiceStatus(),
     });
     return true;
   }
@@ -162,16 +183,19 @@ async function handleApi(request, response, url) {
       sendJson(response, 400, { error: "上传的文件不是有效 PDF。" });
       return true;
     }
-    const header = pdfBuffer.toString("utf8", 0, 5);
-    if (!header.startsWith("%PDF-")) {
+    const signatureWindow = pdfBuffer
+      .subarray(0, Math.min(pdfBuffer.length, 1024))
+      .toString("latin1");
+    if (!signatureWindow.includes("%PDF-")) {
       sendJson(response, 400, { error: "上传的文件不是有效 PDF 格式。" });
       return true;
     }
     const { text, document, engine, warnings, stats } = await extractFromBuffer(pdfBuffer);
+    const responseDoc = safeDocument(document);
     sendJson(response, 200, {
       ok: true,
       text,
-      document: document || [],
+      document: responseDoc,
       engine,
       warnings: warnings || [],
       stats: stats || {},
@@ -187,6 +211,19 @@ async function handleApi(request, response, url) {
   }
 
   return false;
+}
+
+const MAX_DOC_JSON_SIZE = 500 * 1024;
+
+function safeDocument(doc) {
+  if (!doc || !doc.length) return [];
+  const json = JSON.stringify(doc);
+  if (json.length <= MAX_DOC_JSON_SIZE) return doc;
+  let truncated = doc;
+  while (truncated.length > 1 && JSON.stringify(truncated).length > MAX_DOC_JSON_SIZE) {
+    truncated = truncated.slice(0, Math.max(1, truncated.length - 1));
+  }
+  return truncated;
 }
 
 function normalizeApiPath(pathname) {
@@ -231,6 +268,51 @@ function normalizeEnumValue(value, allowedValues, fieldName) {
   }
 
   return value;
+}
+
+function mergeClassification(keywordClass, llmResult, overrides) {
+  return {
+    ...keywordClass,
+    classificationMethod: {
+      context: llmResult.contextType ? "llm" : "keyword",
+      sector: llmResult.sector ? "llm" : "keyword",
+    },
+    context: buildClassPart(
+      keywordClass.context,
+      llmResult.contextType,
+      overrides.contextType,
+      CONTEXT_LABELS,
+    ),
+    sector: buildClassPart(
+      keywordClass.sector,
+      llmResult.sector,
+      overrides.sector,
+      SECTOR_LABELS,
+    ),
+    llmClassify: {
+      contextType: llmResult.contextType,
+      sector: llmResult.sector,
+      confidence: llmResult.confidence,
+      reasoning: llmResult.reasoning,
+    },
+  };
+}
+
+function buildClassPart(keywordPart, llmValue, overrideValue, labels) {
+  if (overrideValue && overrideValue !== "auto" && labels[overrideValue]) {
+    return keywordPart;
+  }
+
+  if (llmValue && labels[llmValue]) {
+    return {
+      detected: keywordPart.detected,
+      selected: llmValue,
+      source: "llm",
+      label: labels[llmValue],
+    };
+  }
+
+  return keywordPart;
 }
 
 module.exports = {

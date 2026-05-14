@@ -166,6 +166,33 @@
       "未来",
       "愿景",
     ],
+    emotional: [
+      "next generation",
+      "our children",
+      "for our children",
+      "for the planet",
+      "for future generations",
+      "guilt-free",
+      "responsible choice",
+      "save the planet",
+      "climate emergency",
+      "last chance",
+      "future generations",
+      "为了子孙",
+      "下一代",
+      "我们的孩子",
+      "共同责任",
+      "守护地球",
+      "你的选择",
+      "从我做起",
+      "绿色未来",
+      "美好家园",
+      "引领变革",
+      "刻不容缓",
+      "迫在眉睫",
+      "气候紧急",
+      "最后机会",
+    ],
     action: [
       "reduced",
       "achieved",
@@ -225,6 +252,7 @@
     const absoluteMatches = findMatches(clean, dictionaries.absolute);
     const proofMatches = findMatches(clean, dictionaries.proof);
     const futureMatches = findMatches(clean, dictionaries.future);
+    const emotionalMatches = findMatches(clean, dictionaries.emotional);
     const actionMatches = findMatches(clean, dictionaries.action);
     const scopeMatches = findMatches(clean, dictionaries.scope);
 
@@ -233,6 +261,11 @@
     const hasProof = proofMatches.length > 0;
     const hasAction = actionMatches.length > 0;
     const hasScope = scopeMatches.length > 0;
+
+    let emotional = emotionalMatches.length * 7;
+    if (vagueMatches.length > 0) emotional += 4;
+    if (futureMatches.length > 0) emotional += 4;
+    emotional = clamp(emotional, 0, 30);
 
     const greenDensity = greenMatches.length / Math.max(1, metrics.densityUnits / 24);
     const claimProb = clamp(18 + greenMatches.length * 16 + greenDensity * 16);
@@ -259,6 +292,7 @@
           evidence: 4,
           overclaim: 2,
           promise: 2,
+          emotional,
         },
         evidence: {
           quantified,
@@ -346,6 +380,7 @@
         evidence,
         overclaim,
         promise,
+        emotional,
       },
       evidence: {
         quantified,
@@ -375,6 +410,7 @@
         evidence: 0,
         overclaim: 0,
         promise: 0,
+        emotional: 0,
       },
       evidence: {
         quantified: false,
