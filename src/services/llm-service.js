@@ -19,14 +19,29 @@ function getServiceStatus() {
   };
 }
 
-async function enrichAnalysis(input) {
-  const status = getServiceStatus();
+function resolveTaskProvider(task) {
+  const envKey = `${task.toUpperCase()}_PROVIDER`;
+  if (process.env[envKey]) return normalizeProvider(process.env[envKey]);
+  return normalizeProvider(process.env.LLM_PROVIDER);
+}
 
-  if (!status.enabled) {
+function resolveTaskModel(task, provider) {
+  const envKey = `${task.toUpperCase()}_MODEL`;
+  if (process.env[envKey]) return process.env[envKey];
+  return getProviderModel(provider);
+}
+
+async function enrichAnalysis(input) {
+  const provider = resolveTaskProvider("enrich");
+  const model = resolveTaskModel("enrich", provider);
+  const apiKey = getProviderApiKey(provider);
+  const enabled = provider !== "none" && Boolean(apiKey);
+
+  if (!enabled) {
     return {
       enabled: false,
-      provider: status.provider,
-      model: status.model,
+      provider,
+      model,
       summary: "LLM API is not configured. Local rule engine result was used.",
       annotations: [],
       vagueExplanations: [],
@@ -40,17 +55,13 @@ async function enrichAnalysis(input) {
 
   try {
     const prompt = buildPrompt(input);
-    const rawText = await callProvider({
-      provider: status.provider,
-      model: status.model,
-      prompt,
-    });
+    const rawText = await callProvider({ provider, model, prompt });
     const parsed = parseModelJson(rawText);
 
     return {
       enabled: true,
-      provider: status.provider,
-      model: status.model,
+      provider,
+      model,
       summary: parsed.summary || rawText,
       annotations: Array.isArray(parsed.annotations) ? parsed.annotations : [],
       adjustedRisk: Number.isFinite(parsed.adjustedRisk) ? parsed.adjustedRisk : null,
@@ -66,8 +77,8 @@ async function enrichAnalysis(input) {
   } catch (error) {
     return {
       enabled: false,
-      provider: status.provider,
-      model: status.model,
+      provider,
+      model,
       summary: "LLM API call failed. Local rule engine result was used.",
       annotations: [],
       vagueExplanations: [],
@@ -81,19 +92,18 @@ async function enrichAnalysis(input) {
 }
 
 async function summarizeHistory(items) {
-  const status = getServiceStatus();
+  const provider = resolveTaskProvider("summary");
+  const model = resolveTaskModel("summary", provider);
+  const apiKey = getProviderApiKey(provider);
+  const enabled = provider !== "none" && Boolean(apiKey);
 
-  if (!status.enabled) {
+  if (!enabled) {
     return { historySummary: null };
   }
 
   try {
     const prompt = buildHistoryPrompt(items);
-    const rawText = await callProvider({
-      provider: status.provider,
-      model: status.model,
-      prompt,
-    });
+    const rawText = await callProvider({ provider, model, prompt });
     const parsed = parseModelJson(rawText);
 
     return {
@@ -105,26 +115,30 @@ async function summarizeHistory(items) {
 }
 
 async function testLlmConnection() {
+  const provider = resolveTaskProvider("test");
+  const model = resolveTaskModel("test", provider);
+  const apiKey = getProviderApiKey(provider);
+  const enabled = provider !== "none" && Boolean(apiKey);
   const status = getServiceStatus();
 
-  if (!status.enabled) {
+  if (!enabled) {
     return {
       ok: false,
-      status,
+      status: { ...status, provider, model },
       error: "LLM provider is not fully configured.",
     };
   }
 
   const rawText = await callProvider({
-    provider: status.provider,
-    model: status.model,
+    provider,
+    model,
     prompt:
       'Return only this JSON: {"ok":true,"summary":"LLM connection is working."}',
   });
 
   return {
     ok: true,
-    status,
+    status: { ...status, provider, model },
     response: parseModelJson(rawText),
     rawText,
   };
@@ -328,16 +342,14 @@ ${JSON.stringify(items)}`;
 }
 
 async function classifyWithLLM(text) {
-  const status = getServiceStatus();
-  if (!status.enabled) return null;
+  const provider = resolveTaskProvider("classify");
+  const model = resolveTaskModel("classify", provider);
+  const apiKey = getProviderApiKey(provider);
+  if (provider === "none" || !apiKey) return null;
 
   try {
     const prompt = buildClassifyPrompt(text);
-    const rawText = await callProvider({
-      provider: status.provider,
-      model: status.model,
-      prompt,
-    });
+    const rawText = await callProvider({ provider, model, prompt });
     const parsed = parseModelJson(rawText);
     const validContexts = [
       "marketing", "product", "report", "social",

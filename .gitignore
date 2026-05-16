@@ -10,5 +10,6 @@ dist/
 .node-gyp/
 .electron-cache/
 .local-home/
+.claude/settings.local.json
 public/engine-core.js
 __pycache__/

@@ -105,6 +105,11 @@ public/
 - **历史记录**: SQLite 存储，`GREENWASH_USER_DATA_DIR` 环境变量控制路径，桌面模式下自动设为 `app.getPath('userData')`。
 - **桌面打包**: `npm run package` 生成 `.dmg`，ASAR 打包时 `better-sqlite3` 需 unpack。
 
+### Change Approval and Runtime Sync
+
+- **功能删改必须先确认**: 删除、隐藏、禁用、替换或实质改变任何用户可见功能、交互流程、API 行为、数据结构或配置含义前，必须先说明影响范围并获得用户明确确认。仅在用户已明确要求该删改时可以执行；发现疑似无用功能或死代码时，先报告，不要擅自删除。
+- **代码改动后必须同步到可运行软件**: 只要修改了任何代码、样式、配置或前端资源，就必须在回复前尝试让正在运行的软件加载到最新版本。按实际情况执行必要同步、检查、重启或刷新：例如修改 `src/engine-core.js` 后运行 `node scripts/sync-engine-core.js`；修改前端后刷新本地页面或重启开发服务；修改桌面端或打包资源后重启 Electron/已部署应用。若因权限、系统限制或环境问题无法自动重载，必须明确说明已完成哪些同步动作、哪里被阻止，以及用户应打开哪个地址或应用进行测试。
+
 ### Modifying the Packaged App
 
 桌面应用安装在 `/Applications/Greenwash Lens.app/`。直接修改步骤：
