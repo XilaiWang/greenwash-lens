@@ -112,12 +112,15 @@ async def create_store_and_index(
     )
 
     # 等待索引完成（轮询 LRO，带超时）
+    # 可通过 EVIDENCE_L1_TIMEOUT_SEC 环境变量调整（默认 1500 秒 / 25 分钟）。
+    # 大型报告（200+ 页）建议设到 1500 以上，小报告 600 足够。
     import time
-    deadline = time.time() + 600
+    timeout_sec = int(os.environ.get("EVIDENCE_L1_TIMEOUT_SEC", "1500"))
+    deadline = time.time() + timeout_sec
     while not operation.done:
         if time.time() > deadline:
             _cleanup_store(store.name)
-            raise RuntimeError("索引超时（10分钟）")
+            raise RuntimeError(f"索引超时（{timeout_sec // 60}分钟）")
         await asyncio.sleep(3)
         operation = client.operations.get(operation)
 
@@ -161,7 +164,9 @@ async def retrieve_chunks(
         [{text, page_number, relevance_score}, ...]
     """
     try:
-        response = _get_client().models.generate_content(
+        # Use async SDK to avoid blocking the asyncio event loop during L3
+        # parallel retrieval (was the root cause of the L3 hang bug).
+        response = await _get_client().aio.models.generate_content(
             model="gemini-3-flash-preview",
             contents=query_text,
             config={

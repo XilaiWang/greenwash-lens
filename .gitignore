@@ -3,6 +3,12 @@ data/history.json
 data/history.sqlite
 data/history.sqlite-shm
 data/history.sqlite-wal
+
+# User-supplied test documents — never commit potentially sensitive
+# corporate reports to git
+data/*.pdf
+data/*.docx
+data/*.xlsx
 node_modules/
 .DS_Store
 dist/

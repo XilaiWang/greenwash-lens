@@ -111,14 +111,15 @@ async def generate_queries(claim: Claim, system_cache_name: str) -> list[Evidenc
         config["cached_content"] = system_cache_name
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=VERIFICATION_MODEL,
             contents=prompt,
             config=config,
         )
         raw = response.text
-        import json as _json
-        qdata = _json.loads(raw) if isinstance(raw, str) else raw
+        # Import here to reuse l2_extractor's tiered JSON parser
+        from l2_extractor import _robust_parse_json
+        qdata = _robust_parse_json(raw) if isinstance(raw, str) else raw
         if isinstance(qdata, list):
             queries = [EvidenceQuery(**q) for q in qdata[:5]]
         else:
@@ -223,16 +224,35 @@ async def adjudicate_evidence(
         adjudication_config["cached_content"] = doc_cache_name
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=model,
             contents=prompt,
             config=adjudication_config,
         )
         raw = response.text
-        import json as _json
-        vdata = _json.loads(raw) if isinstance(raw, str) else raw
-        verdict = ClaimVerdict(**vdata)
-        verdict.claim_id = claim.claim_id
+        from l2_extractor import _robust_parse_json
+        vdata = _robust_parse_json(raw) if isinstance(raw, str) else raw
+
+        # Gemini sometimes wraps the verdict in a list (e.g. `[{...}]`).
+        # Unwrap to a single dict before constructing ClaimVerdict.
+        if isinstance(vdata, list):
+            if not vdata:
+                raise ValueError("Adjudication returned empty list")
+            vdata = vdata[0]
+        if not isinstance(vdata, dict):
+            raise ValueError(f"Adjudication returned {type(vdata).__name__}, expected dict")
+
+        # Force our claim_id (we override anyway) and supply defaults for
+        # any required field the LLM omitted, so Pydantic validation passes.
+        vdata["claim_id"] = claim.claim_id
+        vdata.setdefault("verdict", "insufficient_evidence")
+        vdata.setdefault("confidence", 0.5)
+        vdata.setdefault("evidence_risk_score", 50.0)
+        vdata.setdefault("supporting_evidence", [])
+        vdata.setdefault("contradicting_evidence", [])
+        vdata.setdefault("evidence_gaps", [])
+
+        verdict = ClaimVerdict.model_validate(vdata)
         return verdict
     except Exception as e:
         logger.error(f"Adjudication failed for {claim.claim_id}: {e}")

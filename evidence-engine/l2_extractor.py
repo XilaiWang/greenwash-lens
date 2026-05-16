@@ -5,7 +5,10 @@ Uses Gemini Flash with File Search tool to scan the report and extract
 all independently-verifiable ESG claims as structured Claim objects.
 """
 
+import json as _json
 import logging
+import re
+
 from google import genai
 from google.genai import types
 
@@ -17,6 +20,57 @@ from config import (
 from models import Claim, ClaimType
 
 logger = logging.getLogger(__name__)
+
+
+_DECODER = _json.JSONDecoder()
+_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _robust_parse_json(text: str) -> dict | list:
+    """Parse Gemini-style JSON output safely.
+
+    Tiered fallback:
+      1) Strict json.loads.
+      2) Strip markdown ```json fences then loads.
+      3) Find first { or [ and use raw_decode (consumes only the first valid
+         JSON value, ignoring any extra trailing data — fixes
+         'Extra data: line N column 1' errors).
+      4) Repair common issues (trailing commas, comments) and retry.
+
+    Raises ValueError if nothing works.
+    """
+    # 1) Strict
+    try:
+        return _json.loads(text)
+    except _json.JSONDecodeError:
+        pass
+
+    # 2) Strip code fences
+    stripped = _FENCE_RE.sub("", text).strip()
+    if stripped != text:
+        try:
+            return _json.loads(stripped)
+        except _json.JSONDecodeError:
+            pass
+
+    # 3) raw_decode from first JSON start
+    for ch in ("{", "["):
+        idx = stripped.find(ch)
+        if idx != -1:
+            try:
+                obj, _end = _DECODER.raw_decode(stripped[idx:])
+                return obj
+            except _json.JSONDecodeError:
+                continue
+
+    # 4) Repair: remove // and /* */ comments, drop trailing commas
+    repaired = re.sub(r"//[^\n]*", "", stripped)
+    repaired = re.sub(r"/\*.*?\*/", "", repaired, flags=re.DOTALL)
+    repaired = re.sub(r",(\s*[}\]])", r"\1", repaired)
+    try:
+        return _json.loads(repaired)
+    except _json.JSONDecodeError as e:
+        raise ValueError(f"could not parse JSON after all fallbacks: {e}") from e
 
 EXTRACTION_PROMPT = """你是 ESG 报告的声明抽取专家。从 ESG 报告文本中提取所有可独立验证的 ESG 声明。
 
@@ -91,7 +145,7 @@ async def extract_claims(
         config["cached_content"] = system_cache_name
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=EXTRACTION_MODEL,
             contents=EXTRACTION_PROMPT,
             config=config,
@@ -102,11 +156,18 @@ async def extract_claims(
 
     try:
         raw = response.text
-        import json as _json
-        data = _json.loads(raw) if isinstance(raw, str) else raw
+        data = _robust_parse_json(raw) if isinstance(raw, str) else raw
         claims_data = data.get("claims", []) if isinstance(data, dict) else data
     except Exception as e:
-        logger.error(f"Failed to parse extraction response: {e}")
+        # Dump raw output once for offline diagnosis without flooding logs
+        try:
+            import tempfile, os as _os
+            dump_path = _os.path.join(tempfile.gettempdir(), "evidence-l2-malformed.txt")
+            with open(dump_path, "w", encoding="utf-8") as _f:
+                _f.write(raw if isinstance(raw, str) else repr(raw))
+            logger.error(f"Failed to parse extraction response: {e}; raw saved to {dump_path}")
+        except Exception:
+            logger.error(f"Failed to parse extraction response: {e}")
         raise RuntimeError(f"声明解析失败: {e}") from e
 
     if not claims_data:

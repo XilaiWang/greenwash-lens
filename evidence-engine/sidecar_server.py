@@ -222,8 +222,10 @@ def _aggregate_report(claims, verdicts, company, year, analysis_id) -> DocumentR
             "risk_level": risk_level,
             "claim_verdict_distribution": dist,
         },
-        key_findings=[],
-        highest_risk_claims=[],
+        # Populate from the verdicts we already have rather than leaving empty.
+        # /report consumers (UI, JSON export) expect these to be present.
+        key_findings=_generate_findings(verdicts),
+        highest_risk_claims=_top_risk_claims(claims, verdicts, n=5),
     )
 
 
