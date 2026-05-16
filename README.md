@@ -12,6 +12,14 @@ Greenwash Lens 是一个支持中英文文本的 greenwashing 风险检测应用
 - 规则引擎：前后端共用一套 `src/engine-core.js`
 - 外部模型：支持 `openai`、`claude`、`gemini`、`deepseek`
 - NLP 子服务：可选 Python 服务，提供 Layer 2 情绪检测增强
+- **证据核验引擎**：可选 Python 子服务（端口 5176），基于 Gemini File Search
+  对上传的 ESG/CSR 报告做 L1-L4 流水线（索引 → 抽声明 → 多查询检索 → 裁定）。
+  详见 [`evidence-engine/README.md`](evidence-engine/README.md)。
+
+## 检测模型规划
+
+完整的多层级检测模型设计见 [`docs/greenwash-detection-plan.md`](docs/greenwash-detection-plan.md)
+（包含 greenwashing 概念调研、7 Sins / EU ECGT 监管对位、8 层架构、数据需求清单、实施路线图）。
 
 ## 开发运行
 

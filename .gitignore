@@ -13,3 +13,16 @@ dist/
 .claude/settings.local.json
 public/engine-core.js
 __pycache__/
+
+# Python virtualenvs and caches (per-developer, do not commit)
+.venv/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Evidence engine runtime artifacts
+evidence-engine/.venv/
+evidence-engine/__pycache__/
+evidence-engine/.pytest_cache/
+evidence-engine/uploads/
