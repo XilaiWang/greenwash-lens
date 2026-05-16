@@ -51,17 +51,8 @@ async function extractWithPoppler(filePath) {
 async function extractWithPdfJs(filePath) {
   const pdfParse = require("pdf-parse");
   const dataBuffer = await fs.readFile(filePath);
-  const result = await withTimeout(pdfParse(dataBuffer), 30000, "PDF 解析超时，请尝试更小的文件。");
+  const result = await pdfParse(dataBuffer);
   return normalizeExtractedText(result.text);
-}
-
-function withTimeout(promise, ms, message) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(Object.assign(new Error(message), { statusCode: 422 })), ms),
-    ),
-  ]);
 }
 
 async function extractPdfText(filePath) {

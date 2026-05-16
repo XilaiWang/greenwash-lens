@@ -1,3 +1,6 @@
+const { VALID_CONTEXT_TYPES, VALID_SECTORS } = require("../shared/classification-constants");
+const llmCache = require("./llm-cache");
+
 const DEFAULT_MODELS = {
   openai: "gpt-4.1-mini",
   claude: "claude-3-5-haiku-latest",
@@ -19,29 +22,14 @@ function getServiceStatus() {
   };
 }
 
-function resolveTaskProvider(task) {
-  const envKey = `${task.toUpperCase()}_PROVIDER`;
-  if (process.env[envKey]) return normalizeProvider(process.env[envKey]);
-  return normalizeProvider(process.env.LLM_PROVIDER);
-}
-
-function resolveTaskModel(task, provider) {
-  const envKey = `${task.toUpperCase()}_MODEL`;
-  if (process.env[envKey]) return process.env[envKey];
-  return getProviderModel(provider);
-}
-
 async function enrichAnalysis(input) {
-  const provider = resolveTaskProvider("enrich");
-  const model = resolveTaskModel("enrich", provider);
-  const apiKey = getProviderApiKey(provider);
-  const enabled = provider !== "none" && Boolean(apiKey);
+  const status = getServiceStatus();
 
-  if (!enabled) {
+  if (!status.enabled) {
     return {
       enabled: false,
-      provider,
-      model,
+      provider: status.provider,
+      model: status.model,
       summary: "LLM API is not configured. Local rule engine result was used.",
       annotations: [],
       vagueExplanations: [],
@@ -55,13 +43,17 @@ async function enrichAnalysis(input) {
 
   try {
     const prompt = buildPrompt(input);
-    const rawText = await callProvider({ provider, model, prompt });
+    const rawText = await callProvider({
+      provider: status.provider,
+      model: status.model,
+      prompt,
+    });
     const parsed = parseModelJson(rawText);
 
-    return {
+    const result = {
       enabled: true,
-      provider,
-      model,
+      provider: status.provider,
+      model: status.model,
       summary: parsed.summary || rawText,
       annotations: Array.isArray(parsed.annotations) ? parsed.annotations : [],
       adjustedRisk: Number.isFinite(parsed.adjustedRisk) ? parsed.adjustedRisk : null,
@@ -74,11 +66,28 @@ async function enrichAnalysis(input) {
       rawText,
       error: null,
     };
+
+    const cacheKey = llmCache.makeKey({
+      text: input.text,
+      contextType: input.classification?.contextType?.selected,
+      sector: input.classification?.sector?.selected,
+      provider: status.provider,
+      model: status.model,
+    });
+    llmCache.set(cacheKey, {
+      summary: result.summary,
+      annotations: result.annotations,
+      vagueExplanations: result.vagueExplanations,
+      credibilityNotes: result.credibilityNotes,
+      rewriteSuggestion: result.rewriteSuggestion,
+    });
+
+    return result;
   } catch (error) {
     return {
       enabled: false,
-      provider,
-      model,
+      provider: status.provider,
+      model: status.model,
       summary: "LLM API call failed. Local rule engine result was used.",
       annotations: [],
       vagueExplanations: [],
@@ -92,18 +101,19 @@ async function enrichAnalysis(input) {
 }
 
 async function summarizeHistory(items) {
-  const provider = resolveTaskProvider("summary");
-  const model = resolveTaskModel("summary", provider);
-  const apiKey = getProviderApiKey(provider);
-  const enabled = provider !== "none" && Boolean(apiKey);
+  const status = getServiceStatus();
 
-  if (!enabled) {
+  if (!status.enabled) {
     return { historySummary: null };
   }
 
   try {
     const prompt = buildHistoryPrompt(items);
-    const rawText = await callProvider({ provider, model, prompt });
+    const rawText = await callProvider({
+      provider: status.provider,
+      model: status.model,
+      prompt,
+    });
     const parsed = parseModelJson(rawText);
 
     return {
@@ -115,45 +125,42 @@ async function summarizeHistory(items) {
 }
 
 async function testLlmConnection() {
-  const provider = resolveTaskProvider("test");
-  const model = resolveTaskModel("test", provider);
-  const apiKey = getProviderApiKey(provider);
-  const enabled = provider !== "none" && Boolean(apiKey);
   const status = getServiceStatus();
 
-  if (!enabled) {
+  if (!status.enabled) {
     return {
       ok: false,
-      status: { ...status, provider, model },
+      status,
       error: "LLM provider is not fully configured.",
     };
   }
 
   const rawText = await callProvider({
-    provider,
-    model,
+    provider: status.provider,
+    model: status.model,
     prompt:
       'Return only this JSON: {"ok":true,"summary":"LLM connection is working."}',
   });
 
   return {
     ok: true,
-    status: { ...status, provider, model },
+    status,
     response: parseModelJson(rawText),
     rawText,
   };
 }
 
-async function callProvider({ provider, model, prompt }) {
-  if (provider === "openai") return callOpenAI({ model, prompt });
-  if (provider === "claude") return callClaude({ model, prompt });
-  if (provider === "gemini") return callGemini({ model, prompt });
-  if (provider === "deepseek") return callDeepSeek({ model, prompt });
+async function callProvider({ provider, model, prompt, maxTokens }) {
+  const opts = { model, prompt, maxTokens };
+  if (provider === "openai") return callOpenAI(opts);
+  if (provider === "claude") return callClaude(opts);
+  if (provider === "gemini") return callGemini(opts);
+  if (provider === "deepseek") return callDeepSeek(opts);
 
   throw new Error(`Unsupported LLM provider: ${provider}`);
 }
 
-async function callOpenAI({ model, prompt }) {
+async function callOpenAI({ model, prompt, maxTokens }) {
   const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -164,7 +171,7 @@ async function callOpenAI({ model, prompt }) {
       model,
       input: prompt,
       temperature: 0.2,
-      max_output_tokens: 1500,
+      max_output_tokens: maxTokens || 1500,
       store: false,
     }),
   });
@@ -173,7 +180,7 @@ async function callOpenAI({ model, prompt }) {
   return extractOpenAIText(data);
 }
 
-async function callClaude({ model, prompt }) {
+async function callClaude({ model, prompt, maxTokens }) {
   const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -183,7 +190,7 @@ async function callClaude({ model, prompt }) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1500,
+      max_tokens: maxTokens || 1500,
       temperature: 0.2,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -197,7 +204,7 @@ async function callClaude({ model, prompt }) {
     .trim();
 }
 
-async function callGemini({ model, prompt }) {
+async function callGemini({ model, prompt, maxTokens }) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
   )}:generateContent`;
@@ -211,7 +218,7 @@ async function callGemini({ model, prompt }) {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1500,
+        maxOutputTokens: maxTokens || 1500,
       },
     }),
   });
@@ -224,7 +231,7 @@ async function callGemini({ model, prompt }) {
     .trim();
 }
 
-async function callDeepSeek({ model, prompt }) {
+async function callDeepSeek({ model, prompt, maxTokens }) {
   const response = await fetchWithTimeout("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
@@ -245,7 +252,7 @@ async function callDeepSeek({ model, prompt }) {
         },
       ],
       temperature: 0.2,
-      max_tokens: 1500,
+      max_tokens: maxTokens || 1500,
       response_format: { type: "json_object" },
     }),
   });
@@ -342,28 +349,21 @@ ${JSON.stringify(items)}`;
 }
 
 async function classifyWithLLM(text) {
-  const provider = resolveTaskProvider("classify");
-  const model = resolveTaskModel("classify", provider);
-  const apiKey = getProviderApiKey(provider);
-  if (provider === "none" || !apiKey) return null;
+  const status = getServiceStatus();
+  if (!status.enabled) return null;
 
   try {
     const prompt = buildClassifyPrompt(text);
-    const rawText = await callProvider({ provider, model, prompt });
+    const rawText = await callProvider({
+      provider: status.provider,
+      model: status.model,
+      prompt,
+    });
     const parsed = parseModelJson(rawText);
-    const validContexts = [
-      "marketing", "product", "report", "social",
-      "press_release", "investor_relations", "policy", "employer_branding",
-    ];
-    const validSectors = [
-      "general", "energy", "fashion", "aviation", "manufacturing",
-      "finance", "technology", "food_agriculture", "construction_realestate",
-      "automotive", "consumer_goods", "healthcare",
-    ];
-    const contextType = validContexts.includes(parsed.contextType)
+    const contextType = VALID_CONTEXT_TYPES.includes(parsed.contextType)
       ? parsed.contextType
       : null;
-    const sector = validSectors.includes(parsed.sector)
+    const sector = VALID_SECTORS.includes(parsed.sector)
       ? parsed.sector
       : null;
 
@@ -488,119 +488,7 @@ function parseModelJson(text) {
     };
   }
 
-  let jsonText = jsonMatch[0];
-
-  try {
-    return JSON.parse(jsonText);
-  } catch (primaryError) {
-    // Retry with sanitized JSON — LLM outputs often have trailing commas or
-    // unescaped characters that break JSON.parse.
-    try {
-      const sanitized = sanitizeLlmJson(jsonText);
-      return JSON.parse(sanitized);
-    } catch (fallbackError) {
-      // Extract whatever fields we can via regex
-      const partial = extractPartialFields(jsonText, trimmed);
-      console.warn(
-        "LLM JSON parse failed after sanitization.\n" +
-          "Primary error: " + primaryError.message + "\n" +
-          "Raw text (first 500 chars): " + trimmed.slice(0, 500),
-      );
-      return partial;
-    }
-  }
-}
-
-function sanitizeLlmJson(json) {
-  return json
-    // Remove trailing commas before ] or }
-    .replace(/,(\s*[}\]])/g, "$1")
-    // Fix missing commas between string values "..." "..."
-    .replace(/"(\s*)"(\s*)"/g, '",$1"$2"')
-    // Fix missing commas between ] or } and "
-    .replace(/([}\]\d])(\s*\n?\s*)"([a-zA-Z])/g, '$1,$2"$3')
-    // Fix missing commas between value and next key
-    .replace(/([}\]\d"a-zA-Z])(\s*\n?\s*)"([a-zA-Z])/g, (m, p1, p2, p3) => {
-      if (p1 === '"') return m;
-      return p1 + ',' + p2 + '"' + p3;
-    })
-    // Remove single-line // comments
-    .replace(/\/\/[^\n]*/g, "")
-    // Collapse escaped newlines that break JSON strings
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ");
-}
-
-function extractPartialFields(json, rawText) {
-  const extract = (pattern, fallback) => {
-    try {
-      const match = json.match(pattern);
-      return match ? JSON.parse(match[1]) : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-
-  return {
-    summary: extractStringField(json, rawText, "summary"),
-    annotations: extractArrayField(json, "annotations"),
-    adjustedRisk: extractNumberField(json, "adjustedRisk"),
-    evidenceStatus: extractStringField(json, rawText, "evidenceStatus") || "unknown",
-    vagueExplanations: extractArrayField(json, "vagueExplanations"),
-    contradictions: extractArrayField(json, "contradictions"),
-    credibilityNotes: extractArrayField(json, "credibilityNotes"),
-    rewriteSuggestion: extractStringField(json, rawText, "rewriteSuggestion"),
-    emotionAnalysis: extractObjectField(json, "emotionAnalysis"),
-    historySummary: extractStringField(json, rawText, "historySummary"),
-  };
-}
-
-function extractStringField(json, fallbackText, fieldName) {
-  const patterns = [
-    new RegExp('"' + fieldName + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"', 'm'),
-    new RegExp('"' + fieldName + '"\\s*:\\s*"([^"]*)"', 'm'),
-  ];
-  for (const p of patterns) {
-    const match = json.match(p);
-    if (match) return match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
-  }
-  return fieldName === "summary" ? (fallbackText || "").slice(0, 500) : null;
-}
-
-function extractArrayField(json, fieldName) {
-  try {
-    const pattern = new RegExp('"' + fieldName + '"\\s*:\\s*(\\[[^\\]]*\\])', 's');
-    const match = json.match(pattern);
-    if (match) {
-      const cleaned = match[1].replace(/,\s*]/g, ']');
-      const parsed = JSON.parse(cleaned);
-      return Array.isArray(parsed) ? parsed : [];
-    }
-  } catch {}
-  return [];
-}
-
-function extractNumberField(json, fieldName) {
-  try {
-    const pattern = new RegExp('"' + fieldName + '"\\s*:\\s*(-?\\d+\\.?\\d*)');
-    const match = json.match(pattern);
-    if (match) {
-      const n = Number(match[1]);
-      return Number.isFinite(n) ? n : null;
-    }
-  } catch {}
-  return null;
-}
-
-function extractObjectField(json, fieldName) {
-  try {
-    const pattern = new RegExp('"' + fieldName + '"\\s*:\\s*(\\{[^}]*\\})', 's');
-    const match = json.match(pattern);
-    if (match) {
-      const cleaned = match[1].replace(/,\s*}/g, '}');
-      return JSON.parse(cleaned);
-    }
-  } catch {}
-  return null;
+  return JSON.parse(jsonMatch[0]);
 }
 
 function normalizeEmotionAnalysis(value) {
@@ -616,9 +504,11 @@ function normalizeEmotionAnalysis(value) {
 }
 
 module.exports = {
+  callProvider,
   classifyWithLLM,
   enrichAnalysis,
   getServiceStatus,
+  parseModelJson,
   summarizeHistory,
   testLlmConnection,
 };
