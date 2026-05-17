@@ -24,8 +24,9 @@ const L1 = require("./L1-features");
 const L3 = require("./L3-structurer");
 const L5a = require("./L5a-certifications");
 const L6 = require("./L6-consistency");
+const L7 = require("./L7-aggregator");
 
-const ORCHESTRATOR_VERSION = "orchestrator-0.2.0";
+const ORCHESTRATOR_VERSION = "orchestrator-0.3.0";
 
 // Mode capability matrix:
 //   fast          L0 + L1                (no LLM, ~3s)
@@ -123,9 +124,24 @@ async function analyze(rawText, options = {}) {
     elapsed.L6 = Date.now() - t6;
   }
 
+  // L7 — synthesis. Combine L1 + L3 + L5a + L6 into a per-claim risk and
+  // a document-level GRI (0-100). Only runs in comprehensive mode since
+  // it needs all upstream signals. This is the FIRST and ONLY layer that
+  // outputs a score; everything before just produces evidence/features.
+  let layer7 = null;
+  if (mode === "comprehensive") {
+    const t7 = Date.now();
+    layer7 = L7.aggregate(perClaim, layer6);
+    // Attach per-claim risk back to perClaim for UI convenience
+    for (let i = 0; i < perClaim.length; i++) {
+      perClaim[i].risk = layer7.perClaim[i] || null;
+    }
+    elapsed.L7 = Date.now() - t7;
+  }
+
   const stagesRun = ["L0", "L1"];
   if (mode === "standard" || mode === "comprehensive") stagesRun.push("L3");
-  if (mode === "comprehensive") stagesRun.push("L5a", "L6");
+  if (mode === "comprehensive") stagesRun.push("L5a", "L6", "L7");
 
   return {
     apiVersion: "v2",
@@ -139,6 +155,11 @@ async function analyze(rawText, options = {}) {
     },
     perClaim,
     consistency: layer6,
+    scoring: layer7 ? {
+      document: layer7.document,
+      top_concerns: layer7.top_concerns,
+      meta: layer7.meta,
+    } : null,
     meta: {
       engineVersion: ORCHESTRATOR_VERSION,
       stages_run: stagesRun,

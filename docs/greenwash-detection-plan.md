@@ -483,11 +483,15 @@ CREATE TABLE sector_baseline (
 - [ ] LLM Seven Sins 分类器
 - [ ] UI：findings 按 Sin 分组展示
 
-### 阶段 3：Layer 7 + Layer 8 反馈（**2 周**）
-- [ ] GRI 综合公式 + 校准框架
-- [ ] history-store.js schema 迁移 (加 user_feedback)
-- [ ] UI: 每个 finding 加 👍/👎/编辑按钮
-- [ ] 反馈导出脚本
+### 阶段 3：Layer 7 + Layer 8 反馈（**2 周**）⚙️ 进行中
+- [x] **S3.1**: `src/layers/L7-aggregator.js` — 4 维度（text/evidence/external/consistency）→ document_GRI。混合 60% 平均 + 40% 最大值聚合（防止 LLM 把文本切成短 claim 后稀释信号）。13 个测试。
+- [x] **S3.2**: history-store.js schema 迁移——新增 `feedback_json` + `feedback_at` 列，带 PRAGMA introspection 安全迁移；新增 `addFeedback()` 和 `exportFeedbackJsonl()`。7 个测试。
+- [x] **S3.3**: `POST /api/v2/feedback/:id` 接受 user 反馈；`GET /api/v2/feedback/export` 导出 JSONL 训练集。
+- [x] **S3.4**: L7 接入 orchestrator comprehensive mode；扩展 L5a 加中文 `自我认证 / 绝对领先 / 最环保 / 未经验证` 模式；4 个新 orchestrator 测试。
+- [ ] UI: 每个 finding 加 👍/👎/编辑按钮（前端工作，待 v2 endpoint 进入 UI 时一并做）
+
+**当前测试**：96/96 passing（72 + 24 新）。
+**校准状态 v1**：greenwash 中文样本 GRI=29（中低）vs 干净 ESG 数据样本 GRI=7（低），4x 差距。后续按 §5.4 用标注数据细调权重。
 
 ### 阶段 4：Layer 2 中文模型微调（**等数据 + 1 周**）
 - [ ] 准备数据集（用户提供 1500 句）

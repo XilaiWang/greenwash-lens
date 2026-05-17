@@ -9,8 +9,10 @@ const {
   VALID_SECTORS,
 } = require("./text-classifier");
 const {
+  addFeedback,
   clearHistory,
   deleteHistoryItem,
+  exportFeedbackJsonl,
   getStorageInfo,
   readHistory,
 } = require("./history-store");
@@ -244,6 +246,36 @@ async function handleApi(request, response, url) {
     }
 
     sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  // Layer 8 feedback: attach user-supplied labels to a history row.
+  // Body is open-shape (UI decides what fields to send), persisted as JSON.
+  if (request.method === "POST" && pathname.startsWith("/v2/feedback/")) {
+    const historyId = decodeURIComponent(pathname.replace("/v2/feedback/", ""));
+    if (!historyId) {
+      sendJson(response, 400, { error: "缺少 history id。" });
+      return true;
+    }
+    const body = await readJson(request);
+    try {
+      const result = await addFeedback(historyId, body || {});
+      sendJson(response, 200, result);
+    } catch (err) {
+      const status = err.statusCode || 500;
+      sendJson(response, status, { error: err.message });
+    }
+    return true;
+  }
+
+  // Export all labelled rows as JSONL for training pipelines (Stage 4+).
+  if (request.method === "GET" && pathname === "/v2/feedback/export") {
+    const jsonl = exportFeedbackJsonl({ limit: 100000 });
+    response.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Content-Disposition": "attachment; filename=greenwash-feedback.jsonl",
+    });
+    response.end(jsonl);
     return true;
   }
 
