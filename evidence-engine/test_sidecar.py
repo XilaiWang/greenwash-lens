@@ -1,5 +1,5 @@
 """
-Unit tests for Greenwash Lens Evidence Engine — Sprint 1.
+Unit tests for Greenwashing Lens Evidence Engine — Sprint 1.
 
 Covers: health endpoint, upload endpoint, store lifecycle, cache lifecycle, error cases.
 

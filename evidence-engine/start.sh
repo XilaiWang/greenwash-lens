@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start the Evidence Engine Python sidecar on port 5176.
-# Requires GEMINI_API_KEY in env (or in ~/.greenwash/.env).
+# Requires GEMINI_API_KEY in env (or in ~/.greenwashing/.env).
 
 set -euo pipefail
 

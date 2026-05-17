@@ -96,7 +96,7 @@ async function startServer(options = {}) {
   const url = `http://${host}:${actualPort}`;
 
   if (!options.sillent) {
-    console.log(`Greenwash Lens is running at ${url}`);
+    console.log(`Greenwashing Lens is running at ${url}`);
   }
 
   return {

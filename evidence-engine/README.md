@@ -1,4 +1,4 @@
-# Greenwash Lens — Evidence Engine (Python Sidecar)
+# Greenwashing Lens — Evidence Engine (Python Sidecar)
 
 L1→L4 PDF claim verification pipeline. Uses Gemini File Search to index
 documents, extract verifiable ESG claims, retrieve supporting evidence

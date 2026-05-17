@@ -1,8 +1,8 @@
-# Greenwash Lens
+# Greenwashing Lens
 
 > **AI 驱动的企业绿色声明风险检测平台** —— 上传 ESG 报告或粘贴绿色营销文本，自动识别 greenwashing（洗绿）风险。基于学术金融语言学框架，结合规则引擎、NLP 情绪分析与多模型 LLM（OpenAI / Claude / Gemini / DeepSeek），提供从模糊表述检测到合规改写建议的全链路审计。支持中英文双语，打包为 Windows / macOS 桌面应用，双击即用。
 
-Greenwash Lens 是一个支持中英文文本的 greenwashing 风险检测应用。现在它既可以作为开发用的本地 Web 服务运行，也可以打包成桌面应用：Windows 安装包（`.exe`）和 macOS 磁盘镜像（`.dmg`）。
+Greenwashing Lens 是一个支持中英文文本的 greenwashing 风险检测应用。现在它既可以作为开发用的本地 Web 服务运行，也可以打包成桌面应用：Windows 安装包（`.exe`）和 macOS 磁盘镜像（`.dmg`）。
 
 当前版本：`0.9.0`
 
@@ -22,7 +22,7 @@ Greenwash Lens 是一个支持中英文文本的 greenwashing 风险检测应用
 
 ## 检测模型规划
 
-完整的多层级检测模型设计见 [`docs/greenwash-detection-plan.md`](docs/greenwash-detection-plan.md)
+完整的多层级检测模型设计见 [`docs/greenwashing-detection-plan.md`](docs/greenwashing-detection-plan.md)
 （包含 greenwashing 概念调研、7 Sins / EU ECGT 监管对位、8 层架构、数据需求清单、实施路线图）。
 
 ### Stage 1 已落地的多层 API（`/api/v2/analyze`）
@@ -82,7 +82,7 @@ npm install
 npm start
 ```
 
-注意：项目路径中不要包含空格（如 `New project`），否则 native module 编译可能报错。建议使用 `greenwash-lens` 这样的目录名。
+注意：项目路径中不要包含空格（如 `New project`），否则 native module 编译可能报错。建议使用 `greenwashing-lens` 这样的目录名。
 
 默认地址：
 
@@ -131,8 +131,8 @@ data/history.sqlite
 
 桌面应用模式下，SQLite 会自动放到系统用户数据目录：
 
-- macOS：`~/Library/Application Support/Greenwash Lens`
-- Windows：`%APPDATA%\\Greenwash Lens`
+- macOS：`~/Library/Application Support/Greenwashing Lens`
+- Windows：`%APPDATA%\\Greenwashing Lens`
 
 首次启动时会自动尝试迁移旧版 `history.json` 数据。
 
@@ -144,7 +144,7 @@ public/                          前端界面与离线资源
 src/api-router.js                API 路由
 src/analysis-jobs.js             异步分析任务与 stalled 状态
 src/engine-core.js               前后端共用评分核心
-src/greenwash-engine.js          后端评分引擎封装
+src/greenwashing-engine.js          后端评分引擎封装
 src/history-store.js             SQLite 历史存储
 src/text-classifier.js           中英文语言/场景/行业识别
 src/services/analysis-service.js 分析编排服务
@@ -200,8 +200,8 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 
 桌面模式不会读取 `app.asar` 里的 `.env`。首次启动 Electron 应用时，程序会在系统用户数据目录自动生成一个 `.env` 模板，之后请直接编辑那个文件：
 
-- macOS：`~/Library/Application Support/Greenwash Lens/.env`
-- Windows：`%APPDATA%\\Greenwash Lens\\.env`
+- macOS：`~/Library/Application Support/Greenwashing Lens/.env`
+- Windows：`%APPDATA%\\Greenwashing Lens\\.env`
 
 修改 `LLM_PROVIDER`、对应的 API key 和模型名后，重启桌面应用即可生效。
 

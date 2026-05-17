@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Behavioral guidelines to reduce common LLM coding mistakes, derived from [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876) on LLM coding pitfalls. Merged with Greenwash Lens project-specific rules.
+Behavioral guidelines to reduce common LLM coding mistakes, derived from [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876) on LLM coding pitfalls. Merged with Greenwashing Lens project-specific rules.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
@@ -73,7 +73,7 @@ src/
   api-router.js             API路由（/api/analyze, /api/classify, /api/upload-pdf等）
   analysis-jobs.js          异步分析任务队列
   engine-core.js            前后端共用的绿色声明评分核心（UMD格式）
-  greenwash-engine.js       后端评分引擎封装
+  greenwashing-engine.js       后端评分引擎封装
   history-store.js          SQLite历史记录（better-sqlite3）
   text-classifier.js        关键词匹配的文本场景/行业分类器
   pdf-cleaner.js            PDF抽取文字清洗器
@@ -112,7 +112,7 @@ public/
 
 ### Modifying the Packaged App
 
-桌面应用安装在 `/Applications/Greenwash Lens.app/`。直接修改步骤：
+桌面应用安装在 `/Applications/Greenwashing Lens.app/`。直接修改步骤：
 1. 用 `npx @electron/asar extract` 解包 `app.asar`
 2. 修改文件
 3. 用 `npx @electron/asar pack` 重新打包（`--unpack-dir "node_modules/better-sqlite3"`）

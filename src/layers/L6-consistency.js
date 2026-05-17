@@ -28,7 +28,7 @@
  * is fast, free, explainable, and unit-testable.
  *
  * The Seven Sins reference: TerraChoice (2007/2010) — see
- * docs/greenwash-detection-plan.md §1.2 for the full taxonomy.
+ * docs/greenwashing-detection-plan.md §1.2 for the full taxonomy.
  */
 
 const L6_VERSION = "L6-0.1.0";

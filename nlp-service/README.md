@@ -1,6 +1,6 @@
-# Greenwash Lens NLP Service
+# Greenwashing Lens NLP Service
 
-This optional Python service adds Layer 2 NLP emotion analysis to Greenwash Lens.
+This optional Python service adds Layer 2 NLP emotion analysis to Greenwashing Lens.
 
 ## Install
 
@@ -45,6 +45,6 @@ http://127.0.0.1:5174/health
 - If your machine has multiple Python installations, `./start.sh` will try to pick one that already has `uvicorn`, `fastapi`, `transformers`, `torch`, and `langdetect` installed.
 - If model download fails on first run, check that the machine can access Hugging Face and try again.
 - If the service starts but `ok` is `false`, one or more models did not load correctly. Restart once after the first download completes.
-- Greenwash Lens can still be used without this service. The app will automatically fall back to the rule layer and LLM layer.
+- Greenwashing Lens can still be used without this service. The app will automatically fall back to the rule layer and LLM layer.
 
-Greenwash Lens works normally when this service is not running. When available, the main app automatically includes it in the three-layer emotion analysis.
+Greenwashing Lens works normally when this service is not running. When available, the main app automatically includes it in the three-layer emotion analysis.

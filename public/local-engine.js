@@ -5,7 +5,7 @@
     throw new Error("GreenwashEngineCore is required before local-engine.js");
   }
 
-  const STORAGE_KEY = "greenwash-local-history-v2";
+  const STORAGE_KEY = "greenwashing-local-history-v2";
   const ENGINE_VERSION = "browser-local-0.9.0";
 
   const cc = global.GreenwashClassificationConstants;
@@ -70,7 +70,7 @@
       llm,
     });
     const meta = {
-      app: "greenwash-lens",
+      app: "greenwashing-lens",
       apiVersion: "local",
       engineVersion: ENGINE_VERSION,
       generatedAt: new Date().toISOString(),
@@ -112,7 +112,7 @@
   function health() {
     return {
       ok: true,
-      app: "greenwash-lens",
+      app: "greenwashing-lens",
       apiVersion: "local",
       engineVersion: ENGINE_VERSION,
       llmService: {

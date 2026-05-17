@@ -1,5 +1,5 @@
 """
-Unit tests for Greenwash Lens Evidence Engine — Sprint 2 (L2 + L3 + L4).
+Unit tests for Greenwashing Lens Evidence Engine — Sprint 2 (L2 + L3 + L4).
 
 Run: pytest test_sprint2.py -v
 """

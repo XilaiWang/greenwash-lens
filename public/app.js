@@ -1328,7 +1328,7 @@ function exportLatestAnalysis() {
   const date = new Date().toISOString().slice(0, 10);
 
   link.href = url;
-  link.download = `greenwash-analysis-${date}.json`;
+  link.download = `greenwashing-analysis-${date}.json`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -1685,7 +1685,7 @@ function setupThemeToggle() {
   const toggle = document.getElementById("themeToggle");
   if (!toggle) return;
 
-  const stored = localStorage.getItem("greenwash-theme");
+  const stored = localStorage.getItem("greenwashing-theme");
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme = stored || (prefersDark ? "dark" : "light");
 
@@ -1695,11 +1695,11 @@ function setupThemeToggle() {
     const current = document.documentElement.getAttribute("data-theme");
     const next = current === "dark" ? "light" : "dark";
     applyTheme(next);
-    localStorage.setItem("greenwash-theme", next);
+    localStorage.setItem("greenwashing-theme", next);
   });
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-    if (!localStorage.getItem("greenwash-theme")) {
+    if (!localStorage.getItem("greenwashing-theme")) {
       applyTheme(e.matches ? "dark" : "light");
     }
   });
@@ -2653,7 +2653,7 @@ function activateResultTab(tabName) {
 // ── Card Collapse / Resize System ──
 
 function setupCardCollapse() {
-  const STORAGE_KEY = "greenwash-collapsed-cards-v1";
+  const STORAGE_KEY = "greenwashing-collapsed-cards-v1";
   const RESIZABLE = { input: 1, result: 1, history: 1 };
   const EXISTING_HEADER = { history: ".panel-heading" };
 
@@ -2794,10 +2794,10 @@ function toggleCard(card, forceExpanded) {
 function persistCardState(id, collapsed) {
   if (!id) return;
   try {
-    const s = JSON.parse(localStorage.getItem("greenwash-collapsed-cards-v1") || "{}");
+    const s = JSON.parse(localStorage.getItem("greenwashing-collapsed-cards-v1") || "{}");
     if (collapsed) s[id] = true;
     else delete s[id];
-    localStorage.setItem("greenwash-collapsed-cards-v1", JSON.stringify(s));
+    localStorage.setItem("greenwashing-collapsed-cards-v1", JSON.stringify(s));
   } catch {}
 }
 

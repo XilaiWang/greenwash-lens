@@ -1,5 +1,5 @@
 """
-Greenwash Lens Evidence Engine — Python Sidecar Server.
+Greenwashing Lens Evidence Engine — Python Sidecar Server.
 
 Provides:
   POST /upload       — Upload PDF, create Store, start indexing
@@ -77,7 +77,7 @@ def _now_iso() -> str:
 
 async def _save_upload_file(upload: UploadFile) -> str:
     """Save upload to temp file. Returns path. Raises ValueError if too large."""
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", prefix="greenwash-")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", prefix="greenwashing-")
     total = 0
     while chunk := await upload.read(8 * 1024 * 1024):  # 8MB chunks
         total += len(chunk)
@@ -277,7 +277,7 @@ def _verdict_distribution(verdicts) -> str:
 # --- App ---
 
 app = FastAPI(
-    title="Greenwash Lens Evidence Engine",
+    title="Greenwashing Lens Evidence Engine",
     version="2.0.0",
     docs_url=None,
     redoc_url=None,

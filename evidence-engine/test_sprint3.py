@@ -1,5 +1,5 @@
 """
-End-to-end tests for Greenwash Lens Evidence Engine — Sprint 3.
+End-to-end tests for Greenwashing Lens Evidence Engine — Sprint 3.
 
 Covers: Batch API mode, Phase 1 integration, full pipeline, error recovery.
 Run: pytest test_sprint3.py -v

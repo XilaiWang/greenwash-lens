@@ -1,4 +1,4 @@
-const CACHE_NAME = "greenwash-lens-v0.9.0";
+const CACHE_NAME = "greenwashing-lens-v0.9.0";
 const ASSETS = [
   "/",
   "/index.html",

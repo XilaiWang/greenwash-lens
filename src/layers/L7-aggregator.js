@@ -13,7 +13,7 @@
  *                      claim (from L6)
  *
  * Weights (v1, will be calibrated against the labelled corpus in
- * docs/greenwash-detection-plan.md §5.4 once data arrives):
+ * docs/greenwashing-detection-plan.md §5.4 once data arrives):
  *   text=0.30, evidence=0.40, external=0.15, consistency=0.15
  *
  * Risk level bins match the existing app convention (low/mid-low/
@@ -69,7 +69,7 @@ function scoreTextRisk(claim) {
   const proofs = f.proof?.count || 0;
   const quantified = claim?.features?.regex?.quantified;
 
-  // Vague green claim is the classic greenwash pattern
+  // Vague green claim is the classic greenwashing pattern
   if (greens >= 1 && vague >= 1) score += 20;
 
   // Each vague term piles on, capped at +30 from this term

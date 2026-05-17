@@ -1,4 +1,4 @@
-const { ENGINE_VERSION, scoreText } = require("../greenwash-engine");
+const { ENGINE_VERSION, scoreText } = require("../greenwashing-engine");
 const { classifyText } = require("../text-classifier");
 const { classifyWithLLM, enrichAnalysis, getServiceStatus } = require("./llm-service");
 const { callNlpService, NLP_SERVICE_URL } = require("./nlp-service-client");
@@ -121,7 +121,7 @@ async function analyzeText({
     llm,
   });
   const meta = {
-    app: "greenwash-lens",
+    app: "greenwashing-lens",
     apiVersion: "v1",
     engineVersion: ENGINE_VERSION,
     generatedAt: new Date().toISOString(),

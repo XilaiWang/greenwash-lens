@@ -128,7 +128,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="Greenwash Lens NLP Service", version="0.9.0", lifespan=lifespan)
+app = FastAPI(title="Greenwashing Lens NLP Service", version="0.9.0", lifespan=lifespan)
 
 
 @app.get("/health")

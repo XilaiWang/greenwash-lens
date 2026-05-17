@@ -1,4 +1,4 @@
-# Greenwash Lens — Layer 1 dictionaries.
+# Greenwashing Lens — Layer 1 dictionaries.
 #
 # This file is the source of truth for keyword-based feature extraction
 # starting in Stage 1. It was lifted verbatim from src/engine-core.js

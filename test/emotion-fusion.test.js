@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { scoreText } = require("../src/greenwash-engine");
+const { scoreText } = require("../src/greenwashing-engine");
 const { fuseEmotionScores } = require("../src/services/emotion-fusion");
 
 test("rule layer exposes an emotional component for emotionally loaded claims", () => {

@@ -45,7 +45,7 @@ function tryRenderFromSvg(targetSize) {
     return null;
   }
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "greenwash-icon-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "greenwashing-icon-"));
   const tempPngPath = path.join(tempDir, "icon.png");
 
   try {
@@ -90,7 +90,7 @@ function maybeWriteIcns(pngBuffer) {
     return;
   }
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "greenwash-iconset-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "greenwashing-iconset-"));
   const iconsetDir = path.join(tempDir, "icon.iconset");
 
   try {

@@ -106,7 +106,7 @@ async function extractPdfText(filePath) {
 }
 
 async function extractFromBuffer(buffer) {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "greenwash-pdf-"));
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "greenwashing-pdf-"));
   const tmpFile = path.join(tmpDir, "upload.pdf");
 
   try {

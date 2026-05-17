@@ -1,4 +1,4 @@
-// Greenwash Lens — Shared utilities
+// Greenwashing Lens — Shared utilities
 // Load before app.js
 
 function clamp(value, min = 0, max = 100) {

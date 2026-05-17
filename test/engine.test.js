@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { scoreText } = require("../src/greenwash-engine");
+const { scoreText } = require("../src/greenwashing-engine");
 
 test("pure Chinese marketing copy with vague green promise scores high risk", () => {
   const result = scoreText("我们承诺到2030年实现碳中和，打造更绿色的未来。", {

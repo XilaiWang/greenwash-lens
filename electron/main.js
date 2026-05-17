@@ -18,14 +18,14 @@ let nlpProcess = null;
 let evidenceSidecar = null;
 let quitting = false;
 
-const APP_NAME = "Greenwash Lens";
+const APP_NAME = "Greenwashing Lens";
 const trayIconPath = path.join(__dirname, "assets", "icon.png");
 
 app.name = APP_NAME;
 app.setName(APP_NAME);
 
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.greenwashlens.desktop");
+  app.setAppUserModelId("com.greenwashinglens.desktop");
 }
 
 app.whenReady().then(async () => {
@@ -294,5 +294,5 @@ function ensureDesktopEnvTemplate(userDataDir) {
     fs.copyFileSync(templatePath, envPath);
   }
 
-  console.log(`Greenwash Lens desktop env file: ${envPath}`);
+  console.log(`Greenwashing Lens desktop env file: ${envPath}`);
 }

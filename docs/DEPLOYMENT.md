@@ -51,13 +51,13 @@ In desktop mode, analysis history is stored in SQLite inside the OS user data di
 macOS:
 
 ```text
-~/Library/Application Support/Greenwash Lens/history.sqlite
+~/Library/Application Support/Greenwashing Lens/history.sqlite
 ```
 
 Windows:
 
 ```text
-%APPDATA%\Greenwash Lens\history.sqlite
+%APPDATA%\Greenwashing Lens\history.sqlite
 ```
 
 In development mode without Electron, the fallback location is:

@@ -1,6 +1,6 @@
-# Greenwash Lens — 多层级检测模型规划 v1
+# Greenwashing Lens — 多层级检测模型规划 v1
 
-> 本文是 Greenwash Lens 检测算法的**重构规划**，不是已实现的功能。
+> 本文是 Greenwashing Lens 检测算法的**重构规划**，不是已实现的功能。
 > 目标：把当前"关键词匹配 + 算术"的单层规则引擎升级为基于学术/监管框架的多层级模型，
 > 在最大化复用现有功能的前提下，规划清晰的数据/训练/集成路径。
 >
@@ -77,7 +77,7 @@ TerraChoice (2007/2010) 是被引用最广的分类法。2010 年的研究发现
 | Worshiping False Labels | ❌ 无 | — |
 | Irrelevance | ❌ 无 | — |
 | Lesser of Two Evils | ⚠️ 部分（sector 修正项 +5） | `engine-core.js` highImpactSectors |
-| Fibbing | ⚠️ 部分（`evidence-engine` L3 裁定） | `/tmp/greenwash-extracted/evidence-engine/l3_verifier.py`（**尚未合入 worktree**）|
+| Fibbing | ⚠️ 部分（`evidence-engine` L3 裁定） | `/tmp/greenwashing-extracted/evidence-engine/l3_verifier.py`（**尚未合入 worktree**）|
 | 量化要求 | ✅（regex）| `engine-core.js:494-504` |
 | 生命周期 | ❌ 无 | — |
 | 第三方验证 | ⚠️ 部分（关键词命中）| `engine-core.js` proof terms |

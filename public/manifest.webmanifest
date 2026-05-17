@@ -1,5 +1,5 @@
 {
-  "name": "Greenwash Lens",
+  "name": "Greenwashing Lens",
   "short_name": "Greenwash",
   "description": "Portable greenwashing risk detection application with frontend, backend, API, and local history.",
   "start_url": "/",

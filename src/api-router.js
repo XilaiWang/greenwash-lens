@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { ENGINE_VERSION } = require("./greenwash-engine");
+const { ENGINE_VERSION } = require("./greenwashing-engine");
 const { readJson, readRawBody, sendJson } = require("./http-utils");
 const {
   classifyText,
@@ -65,7 +65,7 @@ async function handleApi(request, response, url) {
   if (request.method === "GET" && pathname === "/health") {
     sendJson(response, 200, {
       ok: true,
-      app: "greenwash-lens",
+      app: "greenwashing-lens",
       apiVersion: "v1",
       engineVersion: ENGINE_VERSION,
       storage: getStorageInfo(),
@@ -273,7 +273,7 @@ async function handleApi(request, response, url) {
     const jsonl = exportFeedbackJsonl({ limit: 100000 });
     response.writeHead(200, {
       "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Content-Disposition": "attachment; filename=greenwash-feedback.jsonl",
+      "Content-Disposition": "attachment; filename=greenwashing-feedback.jsonl",
     });
     response.end(jsonl);
     return true;

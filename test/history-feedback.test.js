@@ -6,7 +6,7 @@ const path = require("node:path");
 
 // Layer 8 feedback storage tests. Use a temp data dir so we don't
 // touch the developer's real history.sqlite.
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "greenwash-feedback-test-"));
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "greenwashing-feedback-test-"));
 process.env.GREENWASH_USER_DATA_DIR = tmpDir;
 
 const {

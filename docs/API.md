@@ -9,7 +9,7 @@
 ```json
 {
   "ok": true,
-  "app": "greenwash-lens",
+  "app": "greenwashing-lens",
   "apiVersion": "v1",
   "engineVersion": "engine-core-0.9.0",
   "storage": {
@@ -77,7 +77,7 @@
   },
   "meta": {
     "apiVersion": "v1",
-    "app": "greenwash-lens",
+    "app": "greenwashing-lens",
     "engineVersion": "engine-core-0.9.0",
     "generatedAt": "2026-05-11T00:00:00.000Z"
   }

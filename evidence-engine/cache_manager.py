@@ -48,7 +48,7 @@ def get_or_create_system_cache() -> str:
         cache = _get_client().caches.create(
             model=CACHE_MODEL,
             config={
-                "display_name": "greenwash-framework-v2",
+                "display_name": "greenwashing-framework-v2",
                 "system_instruction": SYSTEM_PROMPT,
                 "ttl": "86400s",  # 24 hours
             },
