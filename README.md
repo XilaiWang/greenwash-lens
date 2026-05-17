@@ -21,6 +21,18 @@ Greenwash Lens 是一个支持中英文文本的 greenwashing 风险检测应用
 完整的多层级检测模型设计见 [`docs/greenwash-detection-plan.md`](docs/greenwash-detection-plan.md)
 （包含 greenwashing 概念调研、7 Sins / EU ECGT 监管对位、8 层架构、数据需求清单、实施路线图）。
 
+### Stage 1 已落地的多层 API（`/api/v2/analyze`）
+
+```bash
+curl -X POST http://127.0.0.1:5173/api/v2/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Scope 1 emissions cut 33% vs 2017 by 2030.","mode":"standard"}'
+```
+
+返回 per-claim 结构化数据：每个原子声明带 `features`（Layer 1 词典命中向量）+ `structure`（Layer 3 解析出的 metric/scope/baseline/time_horizon）。模式 `fast` 跳过 Layer 3（不打 LLM，~3 秒）；`standard` 全跑（~5 秒）。
+
+v1 `/api/analyze` 保留不动，前端继续工作。等 Stage 2-3 完成后再做 UI 迁移。
+
 ## 开发运行
 
 先安装依赖，然后启动开发服务：
