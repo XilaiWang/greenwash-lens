@@ -42,7 +42,8 @@ async function readHistory(limit = 30) {
     .prepare(
       `
         SELECT id, created_at, request_text, context_type, sector, result_json, llm_json,
-               verification_json, classification_json, meta_json
+               verification_json, classification_json, meta_json,
+               feedback_json, feedback_at
         FROM history
         ORDER BY datetime(created_at) DESC, rowid DESC
         LIMIT ?
@@ -154,9 +155,23 @@ function getDatabase() {
     `,
   );
 
+  // Stage 3 schema migration: Layer 8 user feedback.
+  // SQLite has no IF NOT EXISTS for ALTER ADD COLUMN, so introspect first.
+  applyFeedbackMigration(database);
+
   migrateLegacyJson(database);
   purgeExpiredHistory(database);
   return database;
+}
+
+function applyFeedbackMigration(db) {
+  const cols = db.prepare("PRAGMA table_info(history)").all().map((c) => c.name);
+  if (!cols.includes("feedback_json")) {
+    db.exec("ALTER TABLE history ADD COLUMN feedback_json TEXT");
+  }
+  if (!cols.includes("feedback_at")) {
+    db.exec("ALTER TABLE history ADD COLUMN feedback_at TEXT");
+  }
 }
 
 function loadBetterSqlite3() {
@@ -262,7 +277,69 @@ function deserializeRow(row) {
     verification: parseJson(row.verification_json),
     classification: parseJson(row.classification_json),
     meta: parseJson(row.meta_json),
+    feedback: parseJson(row.feedback_json),
+    feedbackAt: row.feedback_at || null,
   };
+}
+
+/**
+ * Layer 8: attach user feedback to a history row.
+ *
+ * `feedback` is an open shape so the UI can attach whatever fields the
+ * reviewer enters. Recommended shape:
+ *   {
+ *     reviewer: "string",
+ *     overall: "agree" | "disagree" | "mixed",
+ *     per_claim: [{ claim_id, correct: true|false, correct_sin: "..."?, note: "..."? }],
+ *     gri_override: 0..100 | null,
+ *     note: "free text"
+ *   }
+ *
+ * Persisting the full object lets us export a labelled corpus later for
+ * fine-tuning Layer 2 / Layer 7 calibration.
+ */
+async function addFeedback(id, feedback) {
+  if (!id || typeof id !== "string") {
+    throw new Error("addFeedback: id must be a non-empty string");
+  }
+  if (!feedback || typeof feedback !== "object") {
+    throw new Error("addFeedback: feedback must be an object");
+  }
+  const db = getDatabase();
+  const result = db.prepare(
+    "UPDATE history SET feedback_json = ?, feedback_at = ? WHERE id = ?",
+  ).run(stringify(feedback), new Date().toISOString(), id);
+  if (result.changes === 0) {
+    const err = new Error(`history item not found: ${id}`);
+    err.statusCode = 404;
+    throw err;
+  }
+  return { id, updated: true };
+}
+
+/**
+ * Export all rows that carry user feedback as JSONL for training pipelines.
+ * Each line is one self-contained labeled example.
+ *
+ * @param {{limit?: number}} [opts]
+ * @returns {string} newline-separated JSON lines
+ */
+function exportFeedbackJsonl(opts = {}) {
+  const db = getDatabase();
+  const limit = Math.max(1, Math.min(Number(opts.limit) || 10000, 100000));
+  const rows = db.prepare(
+    `
+      SELECT id, created_at, request_text, context_type, sector,
+             result_json, llm_json, verification_json, classification_json,
+             meta_json, feedback_json, feedback_at
+      FROM history
+      WHERE feedback_json IS NOT NULL
+      ORDER BY datetime(feedback_at) DESC
+      LIMIT ?
+    `,
+  ).all(limit);
+
+  return rows.map(deserializeRow).map((r) => JSON.stringify(r)).join("\n");
 }
 
 function parseJson(value) {
@@ -284,10 +361,12 @@ function createId() {
 }
 
 module.exports = {
+  addFeedback,
   addHistoryItem,
   clearHistory,
   createHistoryItem,
   deleteHistoryItem,
+  exportFeedbackJsonl,
   getStorageInfo,
   readHistory,
 };

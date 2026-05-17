@@ -73,19 +73,25 @@ function loadCertifications() {
 // also names a real cert.
 const FALSE_LABEL_PATTERNS = [
   {
-    re: /self[\s-]certified|self[\s-]declared|our\s+own\s+(?:standard|certification|seal)|in[\s-]house\s+(?:cert|standard|verification)/i,
+    re: /self[\s-]certified|self[\s-]declared|our\s+own\s+(?:\w+\s+)?(?:standard|certification|seal)|in[\s-]house\s+(?:cert|standard|verification)|自我认证|自我声明|自定义\s?(?:标准|认证)/i,
     signal: "self_certified",
     severity: "high",
     description_zh: "自我认证 / 自定义标准——非独立第三方背书。",
   },
   {
-    re: /unverified\s+claim|no\s+independent\s+verification|未经独立\s?验证|自评估/i,
+    re: /unverified\s+claim|no\s+independent\s+verification|未经(?:独立)?\s?验证|未经审计|自评估/i,
     signal: "no_independent_verification",
     severity: "medium",
     description_zh: "声明未经独立第三方核实。",
   },
   {
-    re: /\b(?:certified|认证)\b(?!\s+(?:by|to|under|to\s+the|under\s+the|per|against)\b)/i,
+    re: /(?:industry|market)\s+leader|绝对\s?领先(?:行业)?|行业\s?第一(?!\s*家)|最(?:环保|绿色|可持续)|没有\s?(?:竞争对手|对手)/i,
+    signal: "unsubstantiated_superlative",
+    severity: "medium",
+    description_zh: "未提供基准的最高级声明（如\"行业领先\"、\"最环保\"）。",
+  },
+  {
+    re: /\b(?:certified|认证)\b(?!\s+(?:by|to|under|to\s+the|under\s+the|per|against|的|于)\b)/i,
     signal: "vague_certification_claim",
     severity: "low",
     description_zh: "使用 \"certified / 认证\" 但未指明颁发机构或标准。",
