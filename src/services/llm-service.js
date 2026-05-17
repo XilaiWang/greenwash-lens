@@ -383,6 +383,108 @@ async function classifyWithLLM(text) {
 }
 
 /**
+ * Document metadata extractor — pulls company name + report year from
+ * the first ~6000 chars of an extracted PDF. Used to pre-fill the
+ * evidence-verification form so users don't have to retype.
+ *
+ * Falls back to filename-based guessing when LLM is unavailable:
+ *   "Marks-and-Spencer-Group-plc-Annual-Report-and-Financial-Statements-2025_INTERACTIVE_FINAL-2.pdf"
+ *   → { company: "Marks and Spencer Group plc", year: 2025 }
+ */
+async function extractDocumentMetadata({ text, filename } = {}) {
+  const clean = String(text || "").slice(0, 6000).trim();
+  const fname = String(filename || "").trim();
+  const status = getServiceStatus();
+
+  // Always run filename heuristic as a default; LLM overrides on success.
+  const fallback = guessMetadataFromFilename(fname);
+
+  if (!status.enabled || !clean) {
+    return { ...fallback, source: status.enabled ? "filename" : "filename-no-llm" };
+  }
+
+  try {
+    const prompt = buildExtractMetadataPrompt(clean, fname);
+    const rawText = await callProvider({
+      provider: status.provider,
+      model: status.model,
+      prompt,
+    });
+    const parsed = parseModelJson(rawText);
+    if (!parsed || typeof parsed !== "object") return { ...fallback, source: "filename-llm-empty" };
+
+    const company = (typeof parsed.company === "string" && parsed.company.trim())
+      ? parsed.company.trim().slice(0, 120) : null;
+    const yearRaw = Number(parsed.year);
+    const year = Number.isInteger(yearRaw) && yearRaw >= 1900 && yearRaw <= 2100
+      ? yearRaw : null;
+    const reportType = ["esg_report", "annual_report", "sustainability_report",
+      "csr_report", "tcfd_report", "other"].includes(parsed.report_type)
+      ? parsed.report_type : "esg_report";
+    const conf = Number(parsed.confidence);
+
+    return {
+      company: company || fallback.company,
+      year: year || fallback.year,
+      report_type: reportType,
+      confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0.7,
+      source: company && year ? "llm" : "llm-partial",
+    };
+  } catch {
+    return { ...fallback, source: "filename-llm-error" };
+  }
+}
+
+function guessMetadataFromFilename(filename) {
+  if (!filename) return { company: null, year: null, report_type: "esg_report", confidence: 0.0 };
+  const base = filename.replace(/\.pdf$/i, "");
+  // First 4-digit year between 1990-2099, surrounded by non-digits.
+  // (Can't use \b because filenames use _ which counts as word char.)
+  const yearMatch = base.match(/(?:^|[^0-9])(19[9]\d|20\d{2})(?:[^0-9]|$)/);
+  const year = yearMatch ? Number(yearMatch[1]) : null;
+  // Take leading slug before year (or whole base), replace separators with spaces
+  let company = base;
+  if (yearMatch) {
+    const yearStart = base.indexOf(yearMatch[1]);
+    company = base.slice(0, yearStart).replace(/[-_\s]+$/g, "");
+  }
+  company = company
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return {
+    company: company || null,
+    year,
+    report_type: "esg_report",
+    confidence: 0.4,
+  };
+}
+
+function buildExtractMetadataPrompt(text, filename) {
+  return `Extract document metadata from this ESG / CSR / sustainability report front matter.
+
+Return STRICT JSON only (no markdown fence). Schema:
+{
+  "company": "the publishing company's full official name (no tagline)",
+  "year": 2024,
+  "report_type": "esg_report|annual_report|sustainability_report|csr_report|tcfd_report|other",
+  "confidence": 0.0-1.0
+}
+
+Rules:
+- company: prefer the legal name as it appears on the title page (e.g. "Marks and Spencer Group plc"). If the doc is annual report style and the cover only shows a logo + tagline, infer from the running header / footer / "About us" section in the first page.
+- year: the REPORTING year of the disclosure, NOT the publication year. E.g. "Annual Report and Financial Statements 2024" → 2024 even if published 2025. If a fiscal year range like "FY2023/24", return 2024.
+- If confidence < 0.5, return null for the field you're unsure about.
+- confidence: how sure you are the extracted fields are correct.
+
+Filename (for context): ${filename || "(unknown)"}
+
+First 6000 chars of extracted text:
+${text}`;
+}
+
+/**
  * Layer 3 task — turn one atomic claim into a structured claim graph.
  *
  * Output schema (closed; unknown fields are dropped by the caller):
@@ -750,6 +852,7 @@ module.exports = {
   classifyWithLLM,
   enrichAnalysis,
   extractAtomicClaims,
+  extractDocumentMetadata,
   getServiceStatus,
   parseModelJson,
   structureClaim,

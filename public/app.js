@@ -1801,6 +1801,13 @@ async function handlePdfFile(file) {
     statusMsg += ` · ${file.name}`;
     setPdfUploadState("success", statusMsg);
     await classifyCurrentText({ force: true, reason: "pdf" });
+
+    // Cross-flow: stash File for the evidence-verification panel
+    // (auto-reuse so the user doesn't have to upload the same PDF twice),
+    // and try to extract company/year metadata to pre-fill its form.
+    window._lastUploadedPdf = file;
+    autofillEvidencePanel(file, data.text);
+
     setTimeout(() => setPdfUploadState("idle"), warnings.length ? 8000 : 5000);
   } catch (error) {
     setPdfUploadState("error", error.message || "提取失败，请重试。");
@@ -2072,6 +2079,50 @@ function setupEvidenceUpload() {
   btn?.addEventListener("click", runEvidenceVerification);
 }
 
+/**
+ * Pre-fill the evidence-verification panel after a PDF upload elsewhere.
+ *
+ * Saves the user from re-uploading the same PDF and from retyping the
+ * company name + reporting year. Calls /api/v2/extract-metadata which
+ * returns LLM-extracted (or filename-derived) {company, year}.
+ */
+async function autofillEvidencePanel(file, extractedText) {
+  // 1. Reuse the file as the evidence-verification source.
+  _evidenceFile = file;
+  const zone = document.getElementById("evidenceUploadZone");
+  const label = zone?.querySelector(".evidence-upload-label");
+  if (label) {
+    label.innerHTML = `已自动复用上传的 PDF: <strong>${file.name}</strong>（${(file.size / 1024 / 1024).toFixed(1)} MB）— 点击此处可换文件`;
+  }
+  zone?.classList.add("auto-filled");
+  const btn = document.getElementById("evidenceStartButton");
+  if (btn && !btn.title?.startsWith("证据核验引擎")) btn.disabled = false;
+
+  // 2. Try to pre-fill company name + reporting year via LLM (or filename fallback).
+  try {
+    const resp = await apiFetch(apiUrl("/api/v2/extract-metadata"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: extractedText || "", filename: file.name }),
+    });
+    if (!resp.ok) return;
+    const meta = await resp.json();
+    const companyInput = document.getElementById("evidenceCompany");
+    const yearInput = document.getElementById("evidenceYear");
+    // Only auto-fill if user hasn't typed anything yet — never clobber edits.
+    if (companyInput && meta.company && !companyInput.value.trim()) {
+      companyInput.value = meta.company;
+      companyInput.dataset.autofilled = String(meta.confidence ?? 0.5);
+    }
+    if (yearInput && meta.year && !yearInput.value.trim()) {
+      yearInput.value = String(meta.year);
+      yearInput.dataset.autofilled = String(meta.confidence ?? 0.5);
+    }
+  } catch {
+    // Silent: autofill is a nicety, not required.
+  }
+}
+
 async function runEvidenceVerification() {
   if (!_evidenceFile) return;
   const btn = document.getElementById("evidenceStartButton");
@@ -2120,8 +2171,18 @@ async function runEvidenceVerification() {
         completed: "完成",
         failed: "失败",
       }[status] || status;
-      setEvidenceProgress(progress, stageLabel,
-        data.claims_found ? `已识别 ${data.claims_found} 条声明${data.verdicts_complete !== undefined ? `，已核验 ${data.verdicts_complete}` : ""}` : "");
+      // Build human progress text. Treat null verdicts_complete as "not
+      // started yet" (don't show "null"); show "X/total" when a number.
+      let msg = "";
+      if (typeof data.claims_found === "number" && data.claims_found > 0) {
+        msg = `已识别 ${data.claims_found} 条声明`;
+        if (typeof data.verdicts_complete === "number") {
+          msg += `，已核验 ${data.verdicts_complete}/${data.claims_found}`;
+        } else if (status === "verifying") {
+          msg += `，正在核验…`;
+        }
+      }
+      setEvidenceProgress(progress, stageLabel, msg);
       if (status === "completed") {
         clearInterval(_evidencePollTimer);
         _evidencePollTimer = null;

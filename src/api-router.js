@@ -18,6 +18,7 @@ const {
 } = require("./history-store");
 const { analyzeText } = require("./services/analysis-service");
 const {
+  extractDocumentMetadata,
   getServiceStatus,
   summarizeHistory,
   testLlmConnection,
@@ -141,6 +142,22 @@ async function handleApi(request, response, url) {
     });
 
     sendJson(response, 200, payload);
+    return true;
+  }
+
+  // Extract company/year/report-type from PDF front matter so the
+  // evidence panel form can be pre-filled. Body: { text, filename }.
+  // Always returns something (filename heuristic on LLM unavailable).
+  if (request.method === "POST" && pathname === "/v2/extract-metadata") {
+    const body = await readJson(request);
+    const text = typeof body?.text === "string" ? body.text : "";
+    const filename = typeof body?.filename === "string" ? body.filename : "";
+    if (!text && !filename) {
+      sendJson(response, 400, { error: "text 或 filename 至少需要一个。" });
+      return true;
+    }
+    const meta = await extractDocumentMetadata({ text, filename });
+    sendJson(response, 200, meta);
     return true;
   }
 

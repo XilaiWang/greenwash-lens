@@ -18,6 +18,8 @@ dist/
 .local-home/
 .claude/settings.local.json
 public/engine-core.js
+# Auto-generated per build (see scripts/generate-build-info.js)
+public/build-info.json
 __pycache__/
 
 # Python virtualenvs and caches (per-developer, do not commit)

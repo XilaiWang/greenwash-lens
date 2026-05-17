@@ -3164,3 +3164,61 @@ mark.future-signal {
     display: none !important;
   }
 }
+
+/* ───────────────────────────────────────────────────────────── */
+/* Build-info bar — shows current commit SHA + remote check     */
+/* Status: unknown | latest | outdated | offline                */
+/* ───────────────────────────────────────────────────────────── */
+.build-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.build-info-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+.build-info-bar[data-status="latest"]   .build-info-dot { background: var(--green); }
+.build-info-bar[data-status="outdated"] .build-info-dot { background: var(--amber); }
+.build-info-bar[data-status="offline"]  .build-info-dot { background: var(--muted); }
+.build-info-bar[data-status="outdated"] {
+  border-color: rgba(189, 122, 19, 0.35);
+  background: rgba(189, 122, 19, 0.06);
+  color: var(--ink);
+}
+.build-info-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.build-info-link {
+  flex-shrink: 0;
+  color: var(--teal);
+  text-decoration: none;
+  font-weight: 600;
+}
+.build-info-link:hover { text-decoration: underline; }
+.build-info-bar[data-status="latest"] .build-info-link { display: none; }
+
+/* Evidence upload zone auto-filled state (PDF reused from main upload) */
+.evidence-upload-zone.auto-filled {
+  border-style: solid;
+  border-color: var(--green);
+  background: rgba(13, 138, 76, 0.04);
+}
+.evidence-upload-zone.auto-filled .evidence-upload-icon {
+  color: var(--green);
+}
