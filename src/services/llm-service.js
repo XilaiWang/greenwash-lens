@@ -382,6 +382,100 @@ async function classifyWithLLM(text) {
   }
 }
 
+/**
+ * Layer 0 task — split a free-text ESG passage into atomic claims.
+ *
+ * "Atomic" means: each returned text is one independently-verifiable
+ * statement. The LLM is asked to:
+ *   - split compound sentences into separate claims
+ *   - drop pure framing/connective sentences (no verifiable content)
+ *   - preserve numbers, dates, scopes verbatim (no paraphrasing)
+ *   - return ordered list matching original document flow
+ *
+ * Returns: { claims: [{ text, claim_type, has_data, original_sentence_idx }] }
+ * On any failure (no LLM key, parse error, etc.) returns null so callers
+ * can fall back to paragraph-level splitting.
+ */
+async function extractAtomicClaims(text) {
+  const status = getServiceStatus();
+  if (!status.enabled) return null;
+  const clean = String(text || "").trim();
+  if (!clean) return { claims: [] };
+
+  try {
+    const prompt = buildAtomicClaimsPrompt(clean);
+    const rawText = await callProvider({
+      provider: status.provider,
+      model: status.model,
+      prompt,
+    });
+    const parsed = parseModelJson(rawText);
+    const rawList = Array.isArray(parsed) ? parsed : (parsed?.claims || []);
+    if (!Array.isArray(rawList)) return { claims: [] };
+
+    const seen = new Set();
+    const claims = [];
+    for (let i = 0; i < rawList.length; i++) {
+      const c = rawList[i];
+      if (!c || typeof c !== "object") continue;
+      const claimText = String(c.text || c.claim_text || "").trim();
+      if (!claimText || claimText.length < 5) continue;
+      // De-dupe exact-match texts (LLM occasionally repeats).
+      if (seen.has(claimText)) continue;
+      seen.add(claimText);
+
+      claims.push({
+        claim_id: `L0-${String(claims.length + 1).padStart(3, "0")}`,
+        text: claimText,
+        claim_type: ["achievement", "commitment", "vision", "disclosure", "process"]
+          .includes(c.claim_type) ? c.claim_type : "disclosure",
+        has_data: Boolean(c.has_data),
+        original_sentence_idx: Number.isInteger(c.original_sentence_idx)
+          ? c.original_sentence_idx : null,
+      });
+    }
+    return { claims };
+  } catch {
+    return null;
+  }
+}
+
+function buildAtomicClaimsPrompt(text) {
+  return `You split ESG / sustainability text into ATOMIC, INDEPENDENTLY-VERIFIABLE claims.
+
+Rules:
+- Each output claim is ONE verifiable statement (subject + predicate + scope).
+- Split compound sentences into separate atomic claims.
+- DROP pure framing/connective text (e.g. "We are committed to...", "Our vision is...") UNLESS it contains a concrete commitment.
+- Preserve numbers, percentages, scopes, baseline years VERBATIM. Do NOT paraphrase data.
+- Order claims to match document flow (top to bottom).
+- Limit to 30 claims per input. If text has more, return the 30 most verifiable.
+
+Return strict JSON ONLY (no markdown fence). Schema:
+{
+  "claims": [
+    {
+      "text": "the atomic claim, in original language",
+      "claim_type": "achievement|commitment|vision|disclosure|process",
+      "has_data": true,
+      "original_sentence_idx": 0
+    }
+  ]
+}
+
+claim_type:
+  achievement = past-tense, measurable accomplishment ("reduced emissions by 33%")
+  commitment  = future promise with target ("will reach net zero by 2030")
+  vision      = aspirational, no measurable target ("aim to be a leading sustainable retailer")
+  disclosure  = factual report of state/process ("our supplier code covers 230 sites")
+  process     = methodology or governance description ("audited by KPMG quarterly")
+
+has_data = true iff the claim contains a number, percentage, year, or quantitative unit.
+
+Text to split:
+${text.slice(0, 8000)}`;
+}
+
 function buildClassifyPrompt(text) {
   return `Classify this text into two categories. Return only valid JSON.
 
@@ -507,6 +601,7 @@ module.exports = {
   callProvider,
   classifyWithLLM,
   enrichAnalysis,
+  extractAtomicClaims,
   getServiceStatus,
   parseModelJson,
   summarizeHistory,
