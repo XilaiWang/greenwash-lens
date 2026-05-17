@@ -1,0 +1,507 @@
+# Greenwash Lens — Layer 5a certification seed library.
+#
+# A curated registry of well-known ESG / sustainability certifications,
+# reporting frameworks, and assurance standards. Layer 5a uses this to:
+#   1. Detect when a claim mentions one of these by name
+#      (counter-signal for Sin #2 No Proof).
+#   2. Flag "self-certified" / "our own standard" patterns separately
+#      (Sin #4 Worshiping False Labels — handled in L5a code,
+#       not by individual entries here).
+#   3. Tell future Layer 6 which certs are actually issued by the
+#      named authority (basic sanity for fake-cert detection).
+#
+# Schema per entry:
+#   id                   stable snake_case slug used as the key
+#   name                 { zh, en } display names
+#   authority            issuing organization (string)
+#   domain               array of topic tags (carbon, ghg, water, ...)
+#   identifier_pattern   case-insensitive JS regex (use \\ not \) to detect mentions
+#   verification_url     official source for lookup
+#   type                 process | product | management_system | reporting_framework
+#                        | assurance | initiative
+#   region               global | eu | us | uk | cn | ...
+#   founded_year         helpful for irrelevance check (e.g. CFC bans)
+#   official             true for recognized standards;
+#                        reserved-false for known self-certs (none in v1)
+#
+# Coverage: this v1 seed is ~40 entries spanning the major frameworks.
+# Add/edit freely — no migration needed, just keep the schema fields.
+
+version: 1
+last_updated: 2026-05-17
+
+certifications:
+
+  # ──────────────── GHG / Carbon / Energy ────────────────
+
+  - id: iso_14001
+    name: { zh: "ISO 14001 环境管理体系", en: "ISO 14001 Environmental Management" }
+    authority: International Organization for Standardization
+    domain: [environment, management_system]
+    identifier_pattern: "ISO\\s*14001"
+    verification_url: https://www.iso.org/iso-14001-environmental-management.html
+    type: management_system
+    region: global
+    founded_year: 1996
+    official: true
+
+  - id: iso_14064
+    name: { zh: "ISO 14064 温室气体核算", en: "ISO 14064 GHG Accounting" }
+    authority: International Organization for Standardization
+    domain: [ghg, carbon]
+    identifier_pattern: "ISO\\s*14064(-[123])?"
+    verification_url: https://www.iso.org/standard/66453.html
+    type: process
+    region: global
+    founded_year: 2006
+    official: true
+
+  - id: iso_14067
+    name: { zh: "ISO 14067 产品碳足迹", en: "ISO 14067 Product Carbon Footprint" }
+    authority: International Organization for Standardization
+    domain: [carbon, lca, product]
+    identifier_pattern: "ISO\\s*14067"
+    verification_url: https://www.iso.org/standard/71206.html
+    type: product
+    region: global
+    founded_year: 2013
+    official: true
+
+  - id: iso_50001
+    name: { zh: "ISO 50001 能源管理体系", en: "ISO 50001 Energy Management" }
+    authority: International Organization for Standardization
+    domain: [energy, management_system]
+    identifier_pattern: "ISO\\s*50001"
+    verification_url: https://www.iso.org/iso-50001-energy-management.html
+    type: management_system
+    region: global
+    founded_year: 2011
+    official: true
+
+  - id: pas_2050
+    name: { zh: "PAS 2050 产品生命周期温室气体评估", en: "PAS 2050 Product GHG LCA" }
+    authority: British Standards Institution
+    domain: [carbon, lca, product]
+    identifier_pattern: "PAS\\s*2050"
+    verification_url: https://www.bsigroup.com/en-GB/standards/pas-2050/
+    type: product
+    region: global
+    founded_year: 2008
+    official: true
+
+  - id: ghg_protocol
+    name: { zh: "温室气体核算体系", en: "GHG Protocol Corporate Standard" }
+    authority: WRI / WBCSD
+    domain: [ghg, carbon, framework]
+    identifier_pattern: "GHG\\s*Protocol|温室气体核算体系"
+    verification_url: https://ghgprotocol.org/corporate-standard
+    type: reporting_framework
+    region: global
+    founded_year: 2001
+    official: true
+
+  - id: sbti
+    name: { zh: "科学碳目标倡议", en: "Science Based Targets initiative" }
+    authority: CDP / UNGC / WRI / WWF
+    domain: [carbon, targets, validation]
+    identifier_pattern: "\\bSBTi\\b|science[\\s-]based\\s+targets?|科学碳目标"
+    verification_url: https://sciencebasedtargets.org/
+    type: initiative
+    region: global
+    founded_year: 2015
+    official: true
+
+  - id: re100
+    name: { zh: "RE100 百分百可再生能源倡议", en: "RE100 100% Renewable Electricity" }
+    authority: Climate Group / CDP
+    domain: [renewable, energy]
+    identifier_pattern: "\\bRE100\\b"
+    verification_url: https://www.there100.org/
+    type: initiative
+    region: global
+    founded_year: 2014
+    official: true
+
+  - id: cdp
+    name: { zh: "CDP 气候披露项目", en: "CDP Disclosure" }
+    authority: CDP
+    domain: [climate, water, forests, disclosure]
+    identifier_pattern: "\\bCDP\\b"
+    verification_url: https://www.cdp.net/
+    type: reporting_framework
+    region: global
+    founded_year: 2000
+    official: true
+
+  - id: tcfd
+    name: { zh: "TCFD 气候相关财务披露", en: "TCFD" }
+    authority: Financial Stability Board
+    domain: [climate, financial_disclosure]
+    identifier_pattern: "\\bTCFD\\b"
+    verification_url: https://www.fsb-tcfd.org/
+    type: reporting_framework
+    region: global
+    founded_year: 2015
+    official: true
+
+  - id: tnfd
+    name: { zh: "TNFD 自然相关披露", en: "TNFD" }
+    authority: TNFD
+    domain: [biodiversity, nature, disclosure]
+    identifier_pattern: "\\bTNFD\\b"
+    verification_url: https://tnfd.global/
+    type: reporting_framework
+    region: global
+    founded_year: 2021
+    official: true
+
+  - id: issb_s1_s2
+    name: { zh: "ISSB IFRS S1/S2 可持续披露准则", en: "ISSB IFRS S1/S2" }
+    authority: IFRS Foundation
+    domain: [disclosure, climate, financial]
+    identifier_pattern: "ISSB|IFRS\\s*S[12]"
+    verification_url: https://www.ifrs.org/groups/international-sustainability-standards-board/
+    type: reporting_framework
+    region: global
+    founded_year: 2021
+    official: true
+
+  # ──────────────── ESG Reporting Frameworks ────────────────
+
+  - id: gri
+    name: { zh: "GRI 全球报告倡议", en: "GRI Standards" }
+    authority: Global Reporting Initiative
+    domain: [esg, reporting]
+    identifier_pattern: "\\bGRI\\b"
+    verification_url: https://www.globalreporting.org/
+    type: reporting_framework
+    region: global
+    founded_year: 1997
+    official: true
+
+  - id: sasb
+    name: { zh: "SASB 可持续会计准则", en: "SASB Standards" }
+    authority: Value Reporting Foundation / IFRS
+    domain: [esg, reporting, financial]
+    identifier_pattern: "\\bSASB\\b"
+    verification_url: https://sasb.ifrs.org/
+    type: reporting_framework
+    region: global
+    founded_year: 2011
+    official: true
+
+  - id: iirc
+    name: { zh: "国际整合报告框架", en: "IIRC Integrated Reporting" }
+    authority: Value Reporting Foundation / IFRS
+    domain: [esg, reporting]
+    identifier_pattern: "\\b<IR>\\b|integrated\\s+reporting|IIRC"
+    verification_url: https://www.integratedreporting.org/
+    type: reporting_framework
+    region: global
+    founded_year: 2010
+    official: true
+
+  # ──────────────── Materials / Forestry / Food ────────────────
+
+  - id: fsc
+    name: { zh: "FSC 森林管理委员会认证", en: "FSC Certified" }
+    authority: Forest Stewardship Council
+    domain: [forestry, materials]
+    identifier_pattern: "\\bFSC[\\s-]*(certified|认证)?\\b"
+    verification_url: https://fsc.org/
+    type: product
+    region: global
+    founded_year: 1993
+    official: true
+
+  - id: pefc
+    name: { zh: "PEFC 森林认证体系", en: "PEFC Certified" }
+    authority: Programme for the Endorsement of Forest Certification
+    domain: [forestry, materials]
+    identifier_pattern: "\\bPEFC\\b"
+    verification_url: https://www.pefc.org/
+    type: product
+    region: global
+    founded_year: 1999
+    official: true
+
+  - id: rspo
+    name: { zh: "RSPO 可持续棕榈油认证", en: "RSPO Certified" }
+    authority: Roundtable on Sustainable Palm Oil
+    domain: [agriculture, palm_oil]
+    identifier_pattern: "\\bRSPO\\b"
+    verification_url: https://rspo.org/
+    type: product
+    region: global
+    founded_year: 2004
+    official: true
+
+  - id: c2c
+    name: { zh: "Cradle to Cradle 摇篮到摇篮认证", en: "Cradle to Cradle Certified" }
+    authority: Cradle to Cradle Products Innovation Institute
+    domain: [circular_economy, materials, product]
+    identifier_pattern: "cradle[\\s-]to[\\s-]cradle|\\bC2C\\b"
+    verification_url: https://www.c2ccertified.org/
+    type: product
+    region: global
+    founded_year: 2010
+    official: true
+
+  - id: bcorp
+    name: { zh: "B Corp 共益企业认证", en: "B Corporation" }
+    authority: B Lab
+    domain: [esg, governance, social]
+    identifier_pattern: "\\bB\\s*Corp(oration)?\\b|B\\s+Lab\\s+certified"
+    verification_url: https://www.bcorporation.net/
+    type: management_system
+    region: global
+    founded_year: 2006
+    official: true
+
+  - id: fairtrade
+    name: { zh: "Fairtrade 公平贸易认证", en: "Fairtrade" }
+    authority: Fairtrade International
+    domain: [social, agriculture]
+    identifier_pattern: "\\bFairtrade\\b"
+    verification_url: https://www.fairtrade.net/
+    type: product
+    region: global
+    founded_year: 1997
+    official: true
+
+  - id: rainforest_alliance
+    name: { zh: "Rainforest Alliance 雨林联盟认证", en: "Rainforest Alliance Certified" }
+    authority: Rainforest Alliance
+    domain: [agriculture, biodiversity, forestry]
+    identifier_pattern: "Rainforest\\s+Alliance"
+    verification_url: https://www.rainforest-alliance.org/
+    type: product
+    region: global
+    founded_year: 1987
+    official: true
+
+  - id: msc
+    name: { zh: "MSC 海洋管理委员会认证", en: "MSC Certified" }
+    authority: Marine Stewardship Council
+    domain: [seafood, fishery]
+    identifier_pattern: "\\bMSC\\b\\s+(certified|认证)?"
+    verification_url: https://www.msc.org/
+    type: product
+    region: global
+    founded_year: 1997
+    official: true
+
+  - id: asc
+    name: { zh: "ASC 水产管理委员会认证", en: "ASC Certified" }
+    authority: Aquaculture Stewardship Council
+    domain: [seafood, aquaculture]
+    identifier_pattern: "\\bASC\\b\\s+(certified|认证)?"
+    verification_url: https://asc-aqua.org/
+    type: product
+    region: global
+    founded_year: 2010
+    official: true
+
+  - id: usda_organic
+    name: { zh: "USDA 美国农业部有机认证", en: "USDA Organic" }
+    authority: USDA National Organic Program
+    domain: [agriculture, organic]
+    identifier_pattern: "USDA\\s+Organic"
+    verification_url: https://www.usda.gov/topics/organic
+    type: product
+    region: us
+    founded_year: 2002
+    official: true
+
+  - id: eu_organic
+    name: { zh: "欧盟有机认证", en: "EU Organic" }
+    authority: European Commission
+    domain: [agriculture, organic]
+    identifier_pattern: "EU\\s+Organic|Euroleaf"
+    verification_url: https://agriculture.ec.europa.eu/farming/organic-farming_en
+    type: product
+    region: eu
+    founded_year: 2010
+    official: true
+
+  - id: oekotex
+    name: { zh: "OEKO-TEX 纺织品安全认证", en: "OEKO-TEX Standard 100" }
+    authority: OEKO-TEX Association
+    domain: [textile, chemical_safety]
+    identifier_pattern: "OEKO[\\s-]?TEX|Standard\\s+100"
+    verification_url: https://www.oeko-tex.com/
+    type: product
+    region: global
+    founded_year: 1992
+    official: true
+
+  - id: gots
+    name: { zh: "GOTS 全球有机纺织品标准", en: "GOTS" }
+    authority: Global Organic Textile Standard
+    domain: [textile, organic]
+    identifier_pattern: "\\bGOTS\\b"
+    verification_url: https://global-standard.org/
+    type: product
+    region: global
+    founded_year: 2008
+    official: true
+
+  - id: bci
+    name: { zh: "良好棉花发展协会 BCI", en: "Better Cotton Initiative" }
+    authority: Better Cotton Initiative
+    domain: [agriculture, textile, cotton]
+    identifier_pattern: "Better\\s+Cotton|\\bBCI\\b"
+    verification_url: https://bettercotton.org/
+    type: initiative
+    region: global
+    founded_year: 2009
+    official: true
+
+  - id: rspca_assured
+    name: { zh: "RSPCA Assured 动物福利认证", en: "RSPCA Assured" }
+    authority: Royal Society for the Prevention of Cruelty to Animals
+    domain: [animal_welfare, food]
+    identifier_pattern: "RSPCA\\s+Assured"
+    verification_url: https://www.rspcaassured.org.uk/
+    type: product
+    region: uk
+    founded_year: 1994
+    official: true
+
+  # ──────────────── Buildings / Energy efficiency ────────────────
+
+  - id: leed
+    name: { zh: "LEED 绿色建筑认证", en: "LEED Certified" }
+    authority: U.S. Green Building Council
+    domain: [buildings, energy]
+    identifier_pattern: "\\bLEED\\b\\s+(certified|认证|Gold|Silver|Platinum)?"
+    verification_url: https://www.usgbc.org/leed
+    type: product
+    region: global
+    founded_year: 1998
+    official: true
+
+  - id: breeam
+    name: { zh: "BREEAM 建筑环境评估", en: "BREEAM" }
+    authority: BRE Group
+    domain: [buildings, energy]
+    identifier_pattern: "\\bBREEAM\\b"
+    verification_url: https://bregroup.com/products/breeam/
+    type: product
+    region: global
+    founded_year: 1990
+    official: true
+
+  - id: well
+    name: { zh: "WELL 健康建筑标准", en: "WELL Building Standard" }
+    authority: International WELL Building Institute
+    domain: [buildings, health]
+    identifier_pattern: "WELL\\s+(Building|certified|认证)"
+    verification_url: https://www.wellcertified.com/
+    type: product
+    region: global
+    founded_year: 2014
+    official: true
+
+  - id: passive_house
+    name: { zh: "Passive House 被动房标准", en: "Passive House (Passivhaus)" }
+    authority: Passive House Institute
+    domain: [buildings, energy]
+    identifier_pattern: "Passive\\s+House|Passivhaus"
+    verification_url: https://passivehouse.com/
+    type: product
+    region: global
+    founded_year: 1996
+    official: true
+
+  - id: energy_star
+    name: { zh: "Energy Star 能源之星", en: "ENERGY STAR" }
+    authority: U.S. EPA
+    domain: [energy, product]
+    identifier_pattern: "ENERGY\\s+STAR"
+    verification_url: https://www.energystar.gov/
+    type: product
+    region: us
+    founded_year: 1992
+    official: true
+
+  # ──────────────── Assurance / Auditing ────────────────
+
+  - id: isae_3000
+    name: { zh: "ISAE 3000 非财务信息鉴证", en: "ISAE 3000" }
+    authority: IAASB
+    domain: [assurance, non_financial]
+    identifier_pattern: "ISAE\\s*3000"
+    verification_url: https://www.iaasb.org/publications/international-standard-assurance-engagements-isae-3000-revised
+    type: assurance
+    region: global
+    founded_year: 2003
+    official: true
+
+  - id: isae_3410
+    name: { zh: "ISAE 3410 温室气体鉴证", en: "ISAE 3410 GHG Assurance" }
+    authority: IAASB
+    domain: [assurance, ghg]
+    identifier_pattern: "ISAE\\s*3410"
+    verification_url: https://www.iaasb.org/publications/international-standard-assurance-engagements-isae-3410-assurance-engagements-greenhouse-gas
+    type: assurance
+    region: global
+    founded_year: 2012
+    official: true
+
+  - id: aa1000
+    name: { zh: "AA1000 责任管理标准", en: "AA1000 AccountAbility" }
+    authority: AccountAbility
+    domain: [stakeholder, assurance, esg]
+    identifier_pattern: "AA1000(AS|APS|SES)?"
+    verification_url: https://www.accountability.org/standards/
+    type: assurance
+    region: global
+    founded_year: 1999
+    official: true
+
+  - id: iso_19011
+    name: { zh: "ISO 19011 审计指南", en: "ISO 19011 Auditing Guidelines" }
+    authority: International Organization for Standardization
+    domain: [audit, management_system]
+    identifier_pattern: "ISO\\s*19011"
+    verification_url: https://www.iso.org/standard/70017.html
+    type: process
+    region: global
+    founded_year: 2002
+    official: true
+
+  # ──────────────── Initiatives / Pledges ────────────────
+
+  - id: un_global_compact
+    name: { zh: "联合国全球契约", en: "UN Global Compact" }
+    authority: United Nations
+    domain: [governance, ethics, esg]
+    identifier_pattern: "UN\\s+Global\\s+Compact|UNGC"
+    verification_url: https://www.unglobalcompact.org/
+    type: initiative
+    region: global
+    founded_year: 2000
+    official: true
+
+  - id: pri
+    name: { zh: "PRI 责任投资原则", en: "Principles for Responsible Investment" }
+    authority: PRI Association
+    domain: [investment, esg]
+    identifier_pattern: "\\bPRI\\b\\s+signatory|Principles\\s+for\\s+Responsible\\s+Investment"
+    verification_url: https://www.unpri.org/
+    type: initiative
+    region: global
+    founded_year: 2006
+    official: true
+
+  - id: ev100
+    name: { zh: "EV100 电动汽车倡议", en: "EV100" }
+    authority: Climate Group
+    domain: [transport, electric_vehicles]
+    identifier_pattern: "\\bEV100\\b"
+    verification_url: https://www.theclimategroup.org/ev100
+    type: initiative
+    region: global
+    founded_year: 2017
+    official: true

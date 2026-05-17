@@ -22,10 +22,16 @@
 const L0 = require("./L0-preprocess");
 const L1 = require("./L1-features");
 const L3 = require("./L3-structurer");
+const L5a = require("./L5a-certifications");
+const L6 = require("./L6-consistency");
 
-const ORCHESTRATOR_VERSION = "orchestrator-0.1.0";
+const ORCHESTRATOR_VERSION = "orchestrator-0.2.0";
 
-const VALID_MODES = ["fast", "standard"];
+// Mode capability matrix:
+//   fast          L0 + L1                (no LLM, ~3s)
+//   standard      L0 + L1 + L3            (LLM per claim, ~5s)
+//   comprehensive L0 + L1 + L3 + L5a + L6  (adds cert lookup + sins, still no extra LLM)
+const VALID_MODES = ["fast", "standard", "comprehensive"];
 
 function detectLanguage(text) {
   const cjk = (String(text).match(/[一-鿿]/g) || []).length;
@@ -75,7 +81,7 @@ async function analyze(rawText, options = {}) {
 
   // L3 — per-claim structuring (LLM, skipped in fast mode)
   let structures = [];
-  if (mode === "standard") {
+  if (mode === "standard" || mode === "comprehensive") {
     const t3 = Date.now();
     structures = await L3.structureAll(l0.claims, {
       concurrency: options.l3_concurrency || 5,
@@ -84,6 +90,7 @@ async function analyze(rawText, options = {}) {
     elapsed.L3 = Date.now() - t3;
   }
 
+  // Build per-claim payload BEFORE L5a so L5a can see Layer 3's evidence_cited.
   const perClaim = l0.claims.map((c, i) => ({
     claim_id: c.claim_id,
     text: c.text,
@@ -96,6 +103,30 @@ async function analyze(rawText, options = {}) {
     structure: structures[i] || null,
   }));
 
+  // L5a — certification + false-label detection (deterministic, fast)
+  if (mode === "comprehensive") {
+    const t5 = Date.now();
+    const certResults = L5a.verifyAll(perClaim);
+    for (let i = 0; i < perClaim.length; i++) {
+      perClaim[i].certifications = certResults[i];
+    }
+    elapsed.L5a = Date.now() - t5;
+  }
+
+  // L6 — document-level contradictions + Seven Sins classification.
+  // Depends on L1 features, L3 structures, L5a cert results. Skip when
+  // upstream layers haven't run (modes fast/standard).
+  let layer6 = null;
+  if (mode === "comprehensive") {
+    const t6 = Date.now();
+    layer6 = L6.analyze(perClaim);
+    elapsed.L6 = Date.now() - t6;
+  }
+
+  const stagesRun = ["L0", "L1"];
+  if (mode === "standard" || mode === "comprehensive") stagesRun.push("L3");
+  if (mode === "comprehensive") stagesRun.push("L5a", "L6");
+
   return {
     apiVersion: "v2",
     mode,
@@ -107,9 +138,10 @@ async function analyze(rawText, options = {}) {
       l0_source: l0.source,
     },
     perClaim,
+    consistency: layer6,
     meta: {
       engineVersion: ORCHESTRATOR_VERSION,
-      stages_run: mode === "standard" ? ["L0", "L1", "L3"] : ["L0", "L1"],
+      stages_run: stagesRun,
       elapsed_ms: elapsed,
     },
   };
