@@ -459,20 +459,23 @@ CREATE TABLE sector_baseline (
 
 > 单位：人周；假设 1 人全职；并行任务用 `||` 标注
 
-### 阶段 0：清理 + 集成现有功能（**2 周**）
-- [ ] 把 `evidence-engine/` 合入 git（去 `.venv` / `__pycache__` / `.pytest_cache`，加 `requirements.txt` 在 readme）
-- [ ] 修通 `electron/main.js` 中 evidence-engine sidecar 的 spawn 逻辑
-- [ ] 加 `/api/v1/evidence/*` 路由代理到 Python sidecar
-- [ ] 端到端跑通：上传 PDF → Python L1-L4 完整执行 → 前端展示
-- [ ] 至此交付：**"重型分析"按钮**——`enrichAnalysis` 之上加 `deepEvidenceVerify`
+### 阶段 0：清理 + 集成现有功能（**2 周**）✅ 已完成（PR #2）
+- [x] 把 `evidence-engine/` 合入 git（去 `.venv` / `__pycache__` / `.pytest_cache`，加 `requirements.txt`）
+- [x] 修通 `electron/main.js` 中 evidence-engine sidecar 的 spawn 逻辑
+- [x] 加 `/api/v1/evidence/*` 路由代理到 Python sidecar
+- [x] 端到端跑通：上传 PDF → Python L1-L4 完整执行 → 前端展示
+- [x] 修了 5 个发现的 bug（L1 超时、4 处 sync SDK 阻塞、L2 JSON 解析、L3 裁决 schema、L4 报告聚合）
+- [x] 已验证：M&S 2025 报告 50 页切片，25/25 claim 跑通，GRI 18.1（低风险）
 
-### 阶段 1：架构重构 + Layer 0/1/3（**3 周**）
-- [ ] 把 `src/services/` 重组为 `src/layers/L*.js`
-- [ ] `engine-core.js` 拆词典 (YAML) + 特征函数
-- [ ] 实现 Layer 0 (原子化 LLM 任务)
-- [ ] 实现 Layer 3 (结构化 LLM 任务)
-- [ ] 旧 `analyze` API 改为编排各层调用
-- [ ] 单测覆盖：每层 ≥ 5 个 fixture
+### 阶段 1：架构重构 + Layer 0/1/3（**3 周**）⚙️ 进行中
+- [x] **S1.1**: `engine-core.js` 词典拆到 `src/layers/data/dictionaries.yaml`；新 `src/layers/L1-features.js` 提供纯特征向量（不打分）。8 个测试。Backward-compat：engine-core 不变，并行存在。
+- [x] **S1.2**: Layer 0 原子声明拆分。`src/services/llm-service.js#extractAtomicClaims` + `src/layers/L0-preprocess.js`。LLM 不可用时降级到确定性句子切分。12 个测试。
+- [x] **S1.3**: Layer 3 结构化声明图。`src/services/llm-service.js#structureClaim` + `src/layers/L3-structurer.js`。LLM 提取 claim_type / metric / scope.ghg_scope / baseline / time_horizon / evidence_cited；fallback 正则版处理 Scope 1/2/3、年份、百分比。10 个测试 + 真实 LLM 端到端验证（DeepSeek，3.8s 一次完整调用）。
+- [x] **S1.4**: 新 `/api/v2/analyze` orchestrator 编排 L0 → L1 → (可选 L3)。两种模式：`fast` (L0+L1) ~3s 不打 LLM，`standard` (L0+L1+L3) ~5s 含 LLM 结构化。`/api/v1/analyze` 保留不变。8 个测试。
+- [x] **S1.5**: 文档更新 + PR
+- [ ] _Stage 1 之后剩余_：把旧 `analyze` API 完全迁到新 orchestrator（需要前端配合换 v2 endpoint，本阶段不做）
+
+**当前测试统计**：45/45 passing（27 个原 fixture + 18 个 Stage 1 新增）
 
 ### 阶段 2：Layer 5a 认证库 + Layer 6 一致性（**2 周**）
 - [ ] 认证种子库 YAML + 加载器 + API

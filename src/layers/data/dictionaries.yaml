@@ -1,0 +1,277 @@
+# Greenwash Lens — Layer 1 dictionaries.
+#
+# This file is the source of truth for keyword-based feature extraction
+# starting in Stage 1. It was lifted verbatim from src/engine-core.js
+# (v0.9.0) so behavior is preserved during the architectural refactor.
+#
+# Matching rules (see src/layers/L1-features.js):
+#   - Case-insensitive substring inclusion (text.toLowerCase().includes(term))
+#   - Bilingual: English and Chinese terms coexist per category
+#   - Order does not matter
+#
+# Each category maps to a TerraChoice "Seven Sins" dimension where applicable:
+#   greenClaims   — gate signal: is this a green claim at all?
+#   vague         — Sin #3 Vagueness
+#   absolute      — Sin #1 Hidden Trade-off + Sin #7 Fibbing (overclaim)
+#   proof         — counter-signal for Sin #2 No Proof
+#   future        — discriminates achievements vs commitments
+#   emotional     — emotional appeal as evidence substitute
+#   action        — counter-signal: language of completed action
+#   scope         — boundary specification (Scope 1/2/3, baseline, etc.)
+#
+# When updating: keep parity with src/engine-core.js inline arrays until
+# that file's `scoreText` is fully retired (Stage 7 per the plan).
+# The test test/layer1-features.test.js verifies parity at CI time.
+
+version: 1
+
+categories:
+  greenClaims:
+    description: ESG topic markers — used to detect if a text is a green claim at all.
+    terms:
+      # English
+      - green
+      - eco
+      - environment
+      - sustainable
+      - sustainability
+      - carbon
+      - emission
+      - net zero
+      - climate
+      - renewable
+      - recyclable
+      - biodegradable
+      - circular
+      - zero waste
+      - low-carbon
+      - decarbonization
+      - decarbonisation
+      - clean energy
+      - energy efficient
+      - emissions reduction
+      - climate positive
+      # Chinese
+      - 绿色
+      - 环保
+      - 可持续
+      - 低碳
+      - 碳中和
+      - 净零
+      - 减排
+      - 排放
+      - 气候
+      - 可再生
+      - 回收
+      - 循环
+      - 降解
+      - 节能
+      - 清洁能源
+      - 绿色生产
+      - 绿色供应链
+      - 绿色包装
+      - 节水
+      - 生态
+      - esg
+
+  vague:
+    description: |
+      Sin #3 — Vagueness. Aspirational language without specifics.
+      Hits here increase the vagueness component of the risk score.
+    terms:
+      - aim
+      - strive
+      - committed to
+      - leading
+      - greener
+      - eco-friendly
+      - planet-friendly
+      - minimize impact
+      - sustainable future
+      - responsible choice
+      - better for the planet
+      - nature positive
+      - conscious
+      - cleaner future
+      - low impact
+      - 致力于
+      - 努力
+      - 持续推进
+      - 绿色未来
+      - 更绿色
+      - 更环保
+      - 环境友好
+      - 显著
+      - 有效
+      - 积极
+      - 全面
+      - 助力
+      - 打造
+      - 引领
+      - 不断
+      - 守护地球
+      - 绿色生活
+      - 自然之选
+      - 低影响
+
+  absolute:
+    description: |
+      Absolute/superlative claims that require strong evidence
+      (Sin #1 Hidden Trade-off + Sin #7 Fibbing).
+    terms:
+      - 100%
+      - zero emissions
+      - carbon neutral
+      - net zero
+      - no environmental impact
+      - planet positive
+      - completely sustainable
+      - all natural
+      - fully green
+      - best in class
+      - guilt-free
+      - 零排放
+      - 碳中和
+      - 净零
+      - 无污染
+      - 对环境无影响
+      - 完全可持续
+      - 百分百环保
+      - 全部使用
+      - 行业领先
+      - 最环保
+
+  proof:
+    description: |
+      Evidence/certification markers — COUNTER-signal for Sin #2 No Proof.
+      Presence reduces the evidence-gap score.
+    terms:
+      - third-party
+      - verified
+      - certified
+      - audited
+      - assurance
+      - iso
+      - gri
+      - sbti
+      - cdp
+      - lca
+      - life cycle
+      - methodology
+      - science based
+      - independently verified
+      - 第三方
+      - 核证
+      - 认证
+      - 审计
+      - 鉴证
+      - 生命周期
+      - 方法学
+      - 数据来源
+      - 科学碳目标
+      - 独立验证
+
+  future:
+    description: |
+      Future-tense / commitment markers — distinguishes promises
+      (still verifying) from achievements (verifiable now).
+    terms:
+      - will
+      - plan to
+      - pledge
+      - target
+      - roadmap
+      - by 2030
+      - by 2050
+      - commitment
+      - ambition
+      - goal
+      - 将
+      - 计划
+      - 承诺
+      - 目标
+      - 路线图
+      - 到2030
+      - 到2050
+      - 未来
+      - 愿景
+
+  emotional:
+    description: |
+      Emotional appeals — flagging where sentiment substitutes for evidence.
+      Used in three-layer emotion fusion (rule layer).
+    terms:
+      - next generation
+      - our children
+      - for our children
+      - for the planet
+      - for future generations
+      - guilt-free
+      - responsible choice
+      - save the planet
+      - climate emergency
+      - last chance
+      - future generations
+      - 为了子孙
+      - 下一代
+      - 我们的孩子
+      - 共同责任
+      - 守护地球
+      - 你的选择
+      - 从我做起
+      - 绿色未来
+      - 美好家园
+      - 引领变革
+      - 刻不容缓
+      - 迫在眉睫
+      - 气候紧急
+      - 最后机会
+
+  action:
+    description: |
+      Action-language — COUNTER-signal: distinguishes things already done
+      from things merely promised. Reduces commitment-gap risk.
+    terms:
+      - reduced
+      - achieved
+      - implemented
+      - installed
+      - replaced
+      - invested
+      - measured
+      - reported
+      - purchased renewable
+      - completed
+      - cut emissions
+      - transitioned
+      - 已
+      - 已经
+      - 完成
+      - 减少了
+      - 降低了
+      - 实施
+      - 安装
+      - 替换
+      - 投入
+      - 采购
+      - 披露
+      - 核算
+      - 转型
+
+  scope:
+    description: |
+      Boundary/scope specification (Scope 1/2/3, baseline year, etc.).
+      COUNTER-signal: presence reduces hidden-trade-off risk.
+    terms:
+      - scope 1
+      - scope 2
+      - scope 3
+      - baseline
+      - base year
+      - 范围一
+      - 范围二
+      - 范围三
+      - 基准年
+      - 边界
+      - 产品边界
+      - 组织边界
