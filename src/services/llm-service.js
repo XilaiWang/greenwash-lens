@@ -383,6 +383,154 @@ async function classifyWithLLM(text) {
 }
 
 /**
+ * Layer 3 task — turn one atomic claim into a structured claim graph.
+ *
+ * Output schema (closed; unknown fields are dropped by the caller):
+ *   {
+ *     claim_text: string,
+ *     claim_type: "vision" | "process" | "performance" | "commitment" | "disclosure",
+ *     metric: { name, value, unit } | null,
+ *     scope: { boundary: "product"|"corporate"|"value_chain"|"unknown", ghg_scope: [1|2|3] | null },
+ *     baseline: { type: "absolute"|"relative"|"unknown", reference_year, reference_value } | null,
+ *     time_horizon: { start_year, target_year } | null,
+ *     evidence_cited: [{ type, name, identifier }],
+ *     confidence: 0..1
+ *   }
+ *
+ * Returns null on LLM unavailable / parse failure so the orchestrator can
+ * fall back to a regex-derived stub.
+ */
+async function structureClaim(claimText) {
+  const status = getServiceStatus();
+  if (!status.enabled) return null;
+  const clean = String(claimText || "").trim();
+  if (!clean) return null;
+
+  try {
+    const prompt = buildStructureClaimPrompt(clean);
+    const rawText = await callProvider({
+      provider: status.provider,
+      model: status.model,
+      prompt,
+    });
+    const parsed = parseModelJson(rawText);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const allowedType = ["vision", "process", "performance", "commitment", "disclosure"];
+    const allowedBoundary = ["product", "corporate", "value_chain", "unknown"];
+    const allowedBaselineType = ["absolute", "relative", "unknown"];
+
+    function normGhgScope(arr) {
+      if (!Array.isArray(arr)) return null;
+      const out = arr
+        .map((x) => Number(x))
+        .filter((x) => x === 1 || x === 2 || x === 3);
+      return out.length ? out : null;
+    }
+
+    function normMetric(m) {
+      if (!m || typeof m !== "object") return null;
+      const value = Number(m.value);
+      return {
+        name: typeof m.name === "string" ? m.name : null,
+        value: Number.isFinite(value) ? value : null,
+        unit: typeof m.unit === "string" ? m.unit : null,
+      };
+    }
+
+    function normBaseline(b) {
+      if (!b || typeof b !== "object") return null;
+      const refYear = Number(b.reference_year);
+      const refVal = Number(b.reference_value);
+      return {
+        type: allowedBaselineType.includes(b.type) ? b.type : "unknown",
+        reference_year: Number.isFinite(refYear) ? refYear : null,
+        reference_value: Number.isFinite(refVal) ? refVal : null,
+      };
+    }
+
+    function normTimeHorizon(t) {
+      if (!t || typeof t !== "object") return null;
+      const start = Number(t.start_year);
+      const target = Number(t.target_year);
+      const out = {
+        start_year: Number.isFinite(start) ? start : null,
+        target_year: Number.isFinite(target) ? target : null,
+      };
+      return (out.start_year || out.target_year) ? out : null;
+    }
+
+    function normEvidence(arr) {
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .filter((e) => e && typeof e === "object")
+        .map((e) => ({
+          type: typeof e.type === "string" ? e.type : "unspecified",
+          name: typeof e.name === "string" ? e.name : null,
+          identifier: typeof e.identifier === "string" ? e.identifier : null,
+        }));
+    }
+
+    const conf = Number(parsed.confidence);
+
+    return {
+      claim_text: clean,
+      claim_type: allowedType.includes(parsed.claim_type)
+        ? parsed.claim_type
+        : "disclosure",
+      metric: normMetric(parsed.metric),
+      scope: {
+        boundary: allowedBoundary.includes(parsed?.scope?.boundary)
+          ? parsed.scope.boundary
+          : "unknown",
+        ghg_scope: normGhgScope(parsed?.scope?.ghg_scope),
+      },
+      baseline: normBaseline(parsed.baseline),
+      time_horizon: normTimeHorizon(parsed.time_horizon),
+      evidence_cited: normEvidence(parsed.evidence_cited),
+      confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0.6,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildStructureClaimPrompt(claimText) {
+  return `You convert ONE atomic ESG claim into a structured representation.
+
+Return STRICT JSON only (no markdown fence). Schema:
+{
+  "claim_type": "vision|process|performance|commitment|disclosure",
+  "metric":   { "name": "...", "value": 33.0, "unit": "%" } | null,
+  "scope":    { "boundary": "product|corporate|value_chain|unknown",
+                "ghg_scope": [1, 2, 3] | null },
+  "baseline": { "type": "absolute|relative|unknown",
+                "reference_year": 2017, "reference_value": null } | null,
+  "time_horizon": { "start_year": null, "target_year": 2030 } | null,
+  "evidence_cited": [{ "type": "certification|report|audit|methodology|other",
+                       "name": "...", "identifier": "..." }],
+  "confidence": 0.0-1.0
+}
+
+Rules:
+- claim_type:
+    vision      = no measurable target
+    process     = describes governance / methodology
+    performance = past achievement with data
+    commitment  = future target with date
+    disclosure  = factual statement about current state
+- metric.value: parse the number verbatim. Use null when not present.
+- scope.ghg_scope: ONLY 1, 2, or 3 if the claim names a GHG scope; else null.
+- baseline.reference_year: e.g. "vs 2016/17" → 2017 (target year of the baseline range).
+- time_horizon.target_year: e.g. "by 2030" → 2030.
+- evidence_cited: only certifications / reports / audits explicitly NAMED in the claim.
+- confidence: how confident you are the structured fields capture the claim.
+
+Atomic claim:
+${claimText.slice(0, 1500)}`;
+}
+
+/**
  * Layer 0 task — split a free-text ESG passage into atomic claims.
  *
  * "Atomic" means: each returned text is one independently-verifiable
@@ -604,6 +752,7 @@ module.exports = {
   extractAtomicClaims,
   getServiceStatus,
   parseModelJson,
+  structureClaim,
   summarizeHistory,
   testLlmConnection,
 };
