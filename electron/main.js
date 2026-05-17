@@ -8,7 +8,6 @@ const {
   Tray,
   app,
   nativeImage,
-  shell,
 } = require("electron");
 const { loadEnvFile } = require("../src/env-loader");
 
@@ -16,6 +15,7 @@ let mainWindow = null;
 let tray = null;
 let backend = null;
 let nlpProcess = null;
+let evidenceSidecar = null;
 let quitting = false;
 
 const APP_NAME = "Greenwash Lens";
@@ -36,6 +36,7 @@ app.whenReady().then(async () => {
   loadEnvFile(userDataDir);
 
   startNlpService();
+  startEvidenceEngine();
 
   const { startServer } = require("../server");
   backend = await startServer({
@@ -63,6 +64,7 @@ app.on("before-quit", async () => {
   quitting = true;
 
   stopNlpService();
+  stopEvidenceEngine();
 
   if (backend?.server) {
     await new Promise((resolve) => backend.server.close(resolve));
@@ -87,20 +89,12 @@ function createMainWindow(url) {
     backgroundColor: "#f5f7f8",
     webPreferences: {
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false,
       nodeIntegration: false,
     },
   });
 
   mainWindow.loadURL(url);
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    const allowed = backend?.url ? url.startsWith(backend.url) : false;
-    if (!allowed) {
-      event.preventDefault();
-      shell.openExternal(url);
-    }
-  });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.on("close", (event) => {
     if (quitting || !tray) {
       return;
@@ -202,6 +196,92 @@ function stopNlpService() {
     // Process already dead
   }
   nlpProcess = null;
+}
+
+function resolveEvidenceEngineDir() {
+  const candidate = path.join(__dirname, "..", "evidence-engine");
+  if (fs.existsSync(path.join(candidate, "sidecar_server.py"))) {
+    return candidate;
+  }
+  const altPath = path.join(app.getPath("userData"), "evidence-engine");
+  if (fs.existsSync(path.join(altPath, "sidecar_server.py"))) {
+    return altPath;
+  }
+  return null;
+}
+
+function startEvidenceEngine() {
+  const serviceDir = resolveEvidenceEngineDir();
+  if (!serviceDir) {
+    console.log("Evidence engine directory not found, skipping.");
+    return;
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    console.log("GEMINI_API_KEY not set, evidence engine disabled.");
+    return;
+  }
+
+  // Check if sidecar already running (e.g. started by deploy script)
+  const net = require("node:net");
+  const sock = new net.Socket();
+  sock.setTimeout(500);
+  sock.on("error", () => {
+    // Port free — start sidecar
+    sock.destroy();
+    spawnSidecarProcess(serviceDir);
+  });
+  sock.on("connect", () => {
+    // Already running
+    sock.destroy();
+    console.log("Evidence engine already running on port 5176.");
+  });
+  sock.connect(5176, "127.0.0.1");
+}
+
+function spawnSidecarProcess(serviceDir) {
+  const venvPython = path.join(serviceDir, ".venv", "bin", "python3");
+  const pythonCmd = fs.existsSync(venvPython) ? venvPython
+    : (process.platform === "win32" ? "python" : "python3");
+  evidenceSidecar = spawn(pythonCmd, ["-m", "uvicorn", "sidecar_server:app",
+    "--host", "127.0.0.1",
+    "--port", "5176",
+  ], {
+    cwd: serviceDir,
+    stdio: ["ignore", "ignore", "pipe"],
+    env: {
+      ...process.env,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      PHASE1_API_URL: backend ? backend.url : "http://127.0.0.1:5173",
+    },
+  });
+
+  evidenceSidecar.on("error", () => {
+    evidenceSidecar = null;
+  });
+
+  evidenceSidecar.on("exit", (code) => {
+    if (!quitting && code !== 0) {
+      console.warn(`Evidence engine exited with code ${code}`);
+    }
+    evidenceSidecar = null;
+  });
+
+  if (evidenceSidecar.stderr) {
+    evidenceSidecar.stderr.on("data", (chunk) => {
+      console.warn("[evidence-engine]", chunk.toString().trim());
+    });
+  }
+}
+
+function stopEvidenceEngine() {
+  if (!evidenceSidecar) return;
+  try {
+    evidenceSidecar.kill();
+  } catch {
+    // Process already dead
+  }
+  evidenceSidecar = null;
 }
 
 function ensureDesktopEnvTemplate(userDataDir) {

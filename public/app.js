@@ -761,6 +761,8 @@ function animateValue(element, start, end, duration, formatFn) {
 }
 
 function renderResult(result) {
+  // After every render, refresh the deep-analyze button availability
+  setTimeout(updateDeepAnalyzeButton, 0);
   const colorMap = {
     green: "var(--green)",
     teal: "var(--teal)",
@@ -851,7 +853,7 @@ function renderEmotionAnalysis(emotion) {
       summary.textContent = `情绪风险低 · ${finalScore}分`;
     }
   }
-  if (layersUsed > 0) autoExpandCollapsible("emotionCollapsible");
+  if (layersUsed > 0) autoExpandCard("emotion");
 }
 
 function updateEmotionBar(bar, valueElement, value, fallbackText) {
@@ -936,7 +938,7 @@ function renderLlm(llm, serviceStatus) {
       ? `${provider} · ${llm.model}`
       : "外部模型未启用";
   }
-  if (llm.enabled) autoExpandCollapsible("llmCollapsible");
+  if (llm.enabled) autoExpandCard("llm");
 }
 
 function renderLlmDetails(llm) {
@@ -1069,7 +1071,7 @@ function renderVerification(verification) {
   if (summary) {
     summary.textContent = `${overallLabel[verification.overall] || "已完成"} · ${verification.checks.length}项校验`;
   }
-  autoExpandCollapsible("verificationCollapsible");
+  autoExpandCard("verification");
 }
 
 function renderProgress(job) {
@@ -1364,6 +1366,7 @@ function updateHistorySummaryButton() {
   if (!historySummaryButton) return;
   historySummaryButton.disabled = !llmAvailable;
   historySummaryButton.title = llmAvailable ? "" : "需要配置外部模型 API";
+  updateDeepAnalyzeButton();
 }
 
 async function summarizeHistoryTrends() {
@@ -1975,55 +1978,894 @@ function setPdfUploadState(state, message) {
   }
 }
 
-function setupCollapsibles() {
-  document.querySelectorAll(".collapsible-section").forEach((section) => {
-    const header = section.querySelector(".collapsible-header");
-    const body = section.querySelector(".collapsible-body");
-    if (!header || !body) return;
+// ── Evidence Panel (ESG report self-verification) ──
 
-    header.addEventListener("click", () => {
-      const isOpen = section.classList.contains("open");
-      if (isOpen) {
-        collapseSection(section, body);
-      } else {
-        expandSection(section, body);
+let _evidenceFile = null;
+let _evidencePollTimer = null;
+
+function setEvidenceProgress(pct, label, msg) {
+  const wrap = document.getElementById("evidenceProgress");
+  const fill = document.getElementById("evidenceProgressFill");
+  const lblEl = document.getElementById("evidenceProgressLabel");
+  const pctEl = document.getElementById("evidenceProgressPct");
+  const msgEl = document.getElementById("evidenceProgressMsg");
+  if (wrap) wrap.hidden = false;
+  if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  if (lblEl && label) lblEl.textContent = label;
+  if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+  if (msgEl && msg !== undefined) msgEl.textContent = msg;
+}
+
+function clearEvidenceProgress() {
+  const wrap = document.getElementById("evidenceProgress");
+  if (wrap) wrap.hidden = true;
+}
+
+async function updateEvidenceBadge() {
+  const badge = document.getElementById("evidenceStatusBadge");
+  const btn = document.getElementById("evidenceStartButton");
+  if (!badge) return;
+  try {
+    const resp = await apiFetch(apiUrl("/api/health"));
+    const payload = await resp.json();
+    const avail = !!payload.evidenceEngine?.available;
+    if (avail) {
+      badge.textContent = "引擎可用";
+      badge.classList.add("is-available");
+      if (btn) btn.disabled = !_evidenceFile;
+    } else {
+      badge.textContent = "引擎未启动";
+      badge.classList.remove("is-available");
+      if (btn) {
+        btn.disabled = true;
+        btn.title = "证据核验引擎未启动。请确认 GEMINI_API_KEY 已配置且 Python sidecar 在运行。";
+      }
+    }
+  } catch {
+    badge.textContent = "引擎未启动";
+    badge.classList.remove("is-available");
+    if (btn) btn.disabled = true;
+  }
+}
+
+function setupEvidenceUpload() {
+  const zone = document.getElementById("evidenceUploadZone");
+  const input = document.getElementById("evidencePdfInput");
+  const btn = document.getElementById("evidenceStartButton");
+  if (!zone || !input) return;
+
+  function handleFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      alert("仅支持 PDF 文件");
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      alert("文件超过 50MB 上限");
+      return;
+    }
+    _evidenceFile = file;
+    const label = zone.querySelector(".evidence-upload-label");
+    if (label) label.textContent = `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+    if (btn) btn.disabled = false;
+  }
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => handleFile(input.files[0]));
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  btn?.addEventListener("click", runEvidenceVerification);
+}
+
+async function runEvidenceVerification() {
+  if (!_evidenceFile) return;
+  const btn = document.getElementById("evidenceStartButton");
+  if (btn) btn.disabled = true;
+  document.getElementById("evidenceResult").hidden = true;
+  setEvidenceProgress(5, "上传中", "正在上传 PDF...");
+
+  const company = document.getElementById("evidenceCompany").value.trim() || "unknown";
+  const year = document.getElementById("evidenceYear").value || 2024;
+
+  const fd = new FormData();
+  fd.append("file", _evidenceFile);
+  fd.append("company", company);
+  fd.append("year", year);
+  fd.append("report_type", "esg_report");
+  fd.append("language", "zh");
+
+  let analysisId;
+  try {
+    const resp = await fetch(apiUrl("/evidence/upload"), { method: "POST", body: fd });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
+    analysisId = data.analysis_id;
+  } catch (err) {
+    setEvidenceProgress(0, "上传失败", err.message);
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  setEvidenceProgress(15, "索引中", "PDF 已上传，正在建立索引...");
+
+  // Poll status
+  if (_evidencePollTimer) clearInterval(_evidencePollTimer);
+  _evidencePollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(apiUrl(`/evidence/status/${analysisId}`));
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      const status = data.status || "";
+      const progress = data.progress || 0;
+      const stageLabel = {
+        uploading: "上传中",
+        indexing: "索引中",
+        extracting: "提取声明",
+        verifying: "证据核验",
+        completed: "完成",
+        failed: "失败",
+      }[status] || status;
+      setEvidenceProgress(progress, stageLabel,
+        data.claims_found ? `已识别 ${data.claims_found} 条声明${data.verdicts_complete !== undefined ? `，已核验 ${data.verdicts_complete}` : ""}` : "");
+      if (status === "completed") {
+        clearInterval(_evidencePollTimer);
+        _evidencePollTimer = null;
+        await loadEvidenceReport(analysisId);
+        if (btn) btn.disabled = false;
+      } else if (status === "failed") {
+        clearInterval(_evidencePollTimer);
+        _evidencePollTimer = null;
+        setEvidenceProgress(progress, "失败", data.error || "未知错误");
+        if (btn) btn.disabled = false;
+      }
+    } catch (err) {
+      // Ignore intermittent polling errors
+    }
+  }, 2000);
+}
+
+async function loadEvidenceReport(analysisId) {
+  try {
+    const resp = await fetch(apiUrl(`/evidence/report/${analysisId}`));
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    renderEvidenceReport(data);
+    setEvidenceProgress(100, "完成", "证据核验已完成");
+  } catch (err) {
+    setEvidenceProgress(100, "失败", `加载报告失败: ${err.message}`);
+  }
+}
+
+function renderEvidenceReport(data) {
+  const result = document.getElementById("evidenceResult");
+  if (!result) return;
+  result.hidden = false;
+
+  // Scores (support both nested and flat key shapes)
+  const textRisk = data.text_risk ?? data.scores?.text_risk ?? 0;
+  const evRisk = data.evidence_risk ?? data.scores?.evidence_risk ?? 0;
+  const gri = data.gri ?? data.scores?.gri ?? data.GRI ?? 0;
+  const setScore = (idLabel, idValue, label, n) => {
+    const v = document.getElementById(idValue);
+    const l = document.getElementById(idLabel);
+    if (v) v.textContent = Math.round(n);
+    if (l) l.textContent = label;
+  };
+  const riskLabel = (n) => n < 30 ? "低" : n < 60 ? "中" : n < 80 ? "较高" : "高";
+  setScore("evidenceTextRiskLabel", "evidenceTextRisk", riskLabel(textRisk), textRisk);
+  setScore("evidenceEvidenceRiskLabel", "evidenceEvidenceRisk", riskLabel(evRisk), evRisk);
+  setScore("evidenceGRILabel", "evidenceGRI", riskLabel(gri), gri);
+
+  // Verdict distribution
+  const dist = data.verdict_distribution || data.distribution || {};
+  document.getElementById("evSupported").textContent = `✅ 支持: ${dist.supported || 0}`;
+  document.getElementById("evPartial").textContent = `⚠️ 部分支持: ${dist.partial || dist.partially_supported || 0}`;
+  document.getElementById("evContradicted").textContent = `❌ 矛盾: ${dist.contradicted || 0}`;
+  document.getElementById("evInsufficient").textContent = `❓ 证据不足: ${dist.insufficient || 0}`;
+
+  // Findings
+  const findingsList = document.getElementById("evidenceFindingsList");
+  findingsList.innerHTML = "";
+  (data.key_findings || data.findings || []).forEach((f) => {
+    const li = document.createElement("li");
+    li.textContent = typeof f === "string" ? f : (f.text || JSON.stringify(f));
+    findingsList.appendChild(li);
+  });
+  if (!findingsList.children.length) {
+    const li = document.createElement("li");
+    li.textContent = "暂无关键发现";
+    findingsList.appendChild(li);
+  }
+
+  // Claims
+  const claims = data.claims || [];
+  document.getElementById("evidenceClaimsCount").textContent = claims.length;
+  const claimsList = document.getElementById("evidenceClaimsList");
+  claimsList.innerHTML = "";
+  claims.forEach((c) => {
+    const verdict = c.verdict || c.label || "insufficient";
+    const verdictMap = {
+      supported: { cls: "supported", label: "✅ 支持" },
+      partially_supported: { cls: "partial", label: "⚠️ 部分支持" },
+      partial: { cls: "partial", label: "⚠️ 部分支持" },
+      contradicted: { cls: "contradicted", label: "❌ 矛盾" },
+      insufficient: { cls: "insufficient", label: "❓ 证据不足" },
+    };
+    const v = verdictMap[verdict] || verdictMap.insufficient;
+    const card = document.createElement("div");
+    card.className = "evidence-claim-card";
+    const head = document.createElement("div");
+    const tag = document.createElement("span");
+    tag.className = `evidence-claim-verdict ${v.cls}`;
+    tag.textContent = v.label;
+    head.appendChild(tag);
+    card.appendChild(head);
+    const textP = document.createElement("p");
+    textP.style.margin = "0";
+    textP.textContent = c.claim || c.text || "";
+    card.appendChild(textP);
+    if (c.reasoning || c.evidence_text) {
+      const reason = document.createElement("p");
+      reason.style.margin = "0";
+      reason.style.color = "var(--muted)";
+      reason.style.fontSize = "11px";
+      reason.textContent = c.reasoning || c.evidence_text;
+      card.appendChild(reason);
+    }
+    claimsList.appendChild(card);
+  });
+}
+
+// ── Deep Analysis (M3/M4/M5) ──
+
+const DEEP_RISK_LEVEL_MAP = {
+  "低风险": "low",
+  "中低风险": "medium-low",
+  "中高风险": "medium-high",
+  "高风险": "high",
+};
+
+function updateDeepAnalyzeButton() {
+  const btn = document.getElementById("deepAnalyzeButton");
+  if (!btn) return;
+  const hasResult = !!latestAnalysis?.result;
+  btn.disabled = !llmAvailable || !hasResult;
+  if (!llmAvailable) {
+    btn.title = "需配置外部模型后启用";
+  } else if (!hasResult) {
+    btn.title = "请先运行基础分析";
+  } else {
+    btn.title = "运行 M3/M4/M5 深度分析";
+  }
+}
+
+async function runDeepAnalysis() {
+  const btn = document.getElementById("deepAnalyzeButton");
+  if (!btn || btn.disabled) return;
+  if (!latestAnalysis?.text && !document.getElementById("claimText")?.value?.trim()) {
+    return;
+  }
+  const text = latestAnalysis?.text || document.getElementById("claimText").value.trim();
+  const classification = latestAnalysis?.classification || null;
+
+  btn.disabled = true;
+  const originalText = btn.firstChild?.textContent;
+  // briefly indicate loading
+  btn.classList.add("is-loading");
+  try {
+    const resp = await fetch(apiUrl("/deep-analyze"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, classification }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    renderDeepResult(data);
+    // Switch to advanced tab so user sees the result
+    activateResultTab("advanced");
+  } catch (err) {
+    const section = document.getElementById("deepResultSection");
+    if (section) {
+      section.hidden = false;
+      const reason = document.getElementById("deepConfidenceReason");
+      if (reason) reason.textContent = `深度分析失败: ${err.message}`;
+    }
+  } finally {
+    btn.classList.remove("is-loading");
+    updateDeepAnalyzeButton();
+  }
+}
+
+function renderDeepResult(data) {
+  const section = document.getElementById("deepResultSection");
+  if (!section || !data) return;
+  section.hidden = false;
+
+  // Provider line
+  const prov = document.getElementById("deepResultProvider");
+  if (prov) {
+    const meta = data._meta || {};
+    prov.textContent = meta.enabled
+      ? `${meta.provider || ""}${meta.model ? " · " + meta.model : ""}`
+      : "未启用外部模型";
+  }
+
+  // Gate
+  const gate = data.gate || {};
+  const gateEl = document.getElementById("deepGate");
+  const gateResult = document.getElementById("deepGateResult");
+  const gateDirection = document.getElementById("deepGateDirection");
+  const gateTypes = document.getElementById("deepGateTypes");
+  if (gateEl) {
+    gateEl.hidden = !(gate.gate_result || gate.claim_direction || (gate.text_types && gate.text_types.length));
+  }
+  if (gateResult) gateResult.textContent = gate.gate_result || "";
+  if (gateDirection) gateDirection.textContent = gate.claim_direction || "";
+  if (gateTypes) gateTypes.textContent = (gate.text_types || []).join(" / ");
+
+  // Modules
+  const modules = data.modules || {};
+  const renderModule = (id, mod, detailFmt) => {
+    const score = Math.round(Number(mod?.score) || 0);
+    const scoreEl = document.getElementById(`deep${id}Score`);
+    const barEl = document.getElementById(`deep${id}Bar`);
+    const detailEl = document.getElementById(`deep${id}Detail`);
+    if (scoreEl) scoreEl.textContent = score;
+    if (barEl) barEl.style.width = `${score}%`;
+    if (detailEl) detailEl.textContent = detailFmt(mod || {});
+  };
+  renderModule("M3", modules.M3_vagueness, (m) => {
+    const ratio = m.vagueness_ratio != null ? `${Math.round(m.vagueness_ratio * 100)}%` : "—";
+    const vw = (m.vague_words_found || []).slice(0, 4).join("、") || "无";
+    return `模糊词比 ${ratio} · 命中：${vw}`;
+  });
+  renderModule("M4", modules.M4_promotional_framing, (m) => {
+    const ps = (m.positive_signals || []).length;
+    const bs = (m.balance_signals || []).length;
+    return `正向信号 ${ps} 个 · 平衡信号 ${bs} 个`;
+  });
+  renderModule("M5", modules.M5_commitment_action, (m) => {
+    const avg = m.average_level != null ? m.average_level.toFixed(1) : "—";
+    const worst = m.worst_level != null ? m.worst_level : "—";
+    return `平均等级 ${avg} · 最低 ${worst} · L1 占比 ${Math.round((m.level1_share || 0) * 100)}%`;
+  });
+
+  // Scoring
+  const scoring = data.scoring || {};
+  const tgriEl = document.getElementById("deepTGRI");
+  const badgeEl = document.getElementById("deepRiskBadge");
+  const typeEl = document.getElementById("deepPrimaryType");
+  if (tgriEl) tgriEl.textContent = Math.round(Number(scoring.TGRI) || 0);
+  if (badgeEl) {
+    badgeEl.textContent = scoring.risk_level || "—";
+    badgeEl.setAttribute("data-level", DEEP_RISK_LEVEL_MAP[scoring.risk_level] || "medium-high");
+  }
+  if (typeEl) typeEl.textContent = scoring.primary_type || "";
+
+  // Claims
+  const claims = data.claims || [];
+  const countEl = document.getElementById("deepClaimsCount");
+  const listEl = document.getElementById("deepClaimsList");
+  if (countEl) countEl.textContent = claims.length;
+  if (listEl) {
+    listEl.className = "deep-claims-list";
+    listEl.innerHTML = "";
+    claims.forEach((c) => {
+      const card = document.createElement("div");
+      card.className = "deep-claim-card";
+      const meta = document.createElement("div");
+      meta.className = "deep-claim-meta";
+      const tagType = document.createElement("span");
+      tagType.className = "claim-type-tag";
+      tagType.textContent = c.claim_type || "—";
+      meta.appendChild(tagType);
+      const tagLevel = document.createElement("span");
+      tagLevel.className = "claim-level-tag";
+      tagLevel.setAttribute("data-level", String(c.level || ""));
+      tagLevel.textContent = `L${c.level || "?"} ${c.level_label || ""}`.trim();
+      meta.appendChild(tagLevel);
+      if (c.specificity) {
+        const tagSpec = document.createElement("span");
+        tagSpec.className = "claim-type-tag";
+        tagSpec.textContent = `具体度：${c.specificity}`;
+        meta.appendChild(tagSpec);
+      }
+      card.appendChild(meta);
+      const textP = document.createElement("p");
+      textP.className = "deep-claim-text";
+      textP.textContent = c.text || "";
+      card.appendChild(textP);
+      if (c.reasoning) {
+        const reasonP = document.createElement("p");
+        reasonP.className = "deep-claim-reasoning";
+        reasonP.textContent = c.reasoning;
+        card.appendChild(reasonP);
+      }
+      listEl.appendChild(card);
+    });
+    if (!claims.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "未识别出可分析的声明";
+      listEl.appendChild(empty);
+    }
+  }
+
+  // Summary
+  const summary = data.summary || {};
+  const findingsEl = document.getElementById("deepKeyFindings");
+  const recsEl = document.getElementById("deepRecommendations");
+  if (findingsEl) {
+    findingsEl.innerHTML = "";
+    (summary.key_findings || []).forEach((f) => {
+      const li = document.createElement("li");
+      li.textContent = f;
+      findingsEl.appendChild(li);
+    });
+    if (!(summary.key_findings || []).length) {
+      const li = document.createElement("li");
+      li.textContent = "暂无";
+      findingsEl.appendChild(li);
+    }
+  }
+  if (recsEl) {
+    recsEl.innerHTML = "";
+    (summary.recommendations || []).forEach((r) => {
+      const li = document.createElement("li");
+      li.textContent = r;
+      recsEl.appendChild(li);
+    });
+    if (!(summary.recommendations || []).length) {
+      const li = document.createElement("li");
+      li.textContent = "暂无";
+      recsEl.appendChild(li);
+    }
+  }
+
+  // QC
+  const qc = data.quality_control || {};
+  const confEl = document.getElementById("deepConfidence");
+  const confReasonEl = document.getElementById("deepConfidenceReason");
+  if (confEl) confEl.textContent = `${Math.round((qc.confidence || 0) * 100)}%`;
+  if (confReasonEl) confReasonEl.textContent = qc.confidence_reason || "";
+
+  // Auto-expand parent collapsible (result-panel) if collapsed
+  autoExpandCard("result");
+}
+
+function setupDeepAnalyze() {
+  const btn = document.getElementById("deepAnalyzeButton");
+  if (!btn) return;
+  btn.addEventListener("click", runDeepAnalysis);
+  updateDeepAnalyzeButton();
+}
+
+// ── Settings Drawer ──
+
+const PROVIDER_KEYS = ["openai", "claude", "gemini", "deepseek"];
+let _settingsCachedState = null;
+
+async function loadSettings() {
+  try {
+    const resp = await fetch(apiUrl("/settings"));
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    _settingsCachedState = data;
+    // populate provider radios
+    const radios = document.querySelectorAll('input[name="settingsProvider"]');
+    radios.forEach((r) => { r.checked = r.value === (data.provider || "none"); });
+    // populate each provider group
+    for (const p of PROVIDER_KEYS) {
+      const info = data.providers?.[p] || { configured: false, model: "" };
+      const cap = p.charAt(0).toUpperCase() + p.slice(1);
+      const statusEl = document.getElementById(`settingsStatus${cap}`);
+      const keyEl = document.getElementById(`settings${cap}Key`);
+      const modelEl = document.getElementById(`settings${cap}Model`);
+      if (statusEl) {
+        statusEl.textContent = info.configured ? "已配置" : "未配置";
+        statusEl.classList.toggle("is-configured", !!info.configured);
+      }
+      if (keyEl) keyEl.value = ""; // always start blank
+      if (modelEl) modelEl.value = info.model || "";
+    }
+    const timeoutEl = document.getElementById("settingsTimeout");
+    if (timeoutEl) timeoutEl.value = data.timeoutMs || 30000;
+    return data;
+  } catch (err) {
+    const msg = document.getElementById("settingsMessage");
+    if (msg) {
+      msg.textContent = `加载设置失败: ${err.message}`;
+      msg.setAttribute("data-status", "err");
+    }
+    return null;
+  }
+}
+
+function openSettingsDrawer() {
+  const drawer = document.getElementById("settingsDrawer");
+  const backdrop = document.getElementById("settingsBackdrop");
+  if (!drawer || !backdrop) return;
+  drawer.hidden = false;
+  backdrop.hidden = false;
+  drawer.setAttribute("aria-hidden", "false");
+  const msg = document.getElementById("settingsMessage");
+  if (msg) { msg.textContent = ""; msg.removeAttribute("data-status"); }
+  loadSettings();
+  // focus first focusable
+  setTimeout(() => {
+    const firstRadio = drawer.querySelector('input[type="radio"]:checked, input[type="radio"]');
+    if (firstRadio) firstRadio.focus();
+  }, 50);
+}
+
+function closeSettingsDrawer() {
+  const drawer = document.getElementById("settingsDrawer");
+  const backdrop = document.getElementById("settingsBackdrop");
+  if (!drawer || !backdrop) return;
+  drawer.hidden = true;
+  backdrop.hidden = true;
+  drawer.setAttribute("aria-hidden", "true");
+  document.getElementById("settingsOpenButton")?.focus();
+}
+
+async function saveAndTestSettings() {
+  const msg = document.getElementById("settingsMessage");
+  const saveBtn = document.getElementById("settingsSaveButton");
+  if (msg) { msg.textContent = "保存中..."; msg.setAttribute("data-status", "info"); }
+  if (saveBtn) saveBtn.disabled = true;
+
+  // Build updates payload
+  const provider = document.querySelector('input[name="settingsProvider"]:checked')?.value || "none";
+  const payload = { provider, providers: {} };
+  const timeoutEl = document.getElementById("settingsTimeout");
+  if (timeoutEl && timeoutEl.value) {
+    const t = Number(timeoutEl.value);
+    if (Number.isFinite(t)) payload.timeoutMs = t;
+  }
+  for (const p of PROVIDER_KEYS) {
+    const cap = p.charAt(0).toUpperCase() + p.slice(1);
+    const keyEl = document.getElementById(`settings${cap}Key`);
+    const modelEl = document.getElementById(`settings${cap}Model`);
+    const entry = {};
+    if (keyEl && keyEl.value.trim()) entry.apiKey = keyEl.value;
+    if (modelEl && modelEl.value.trim()) entry.model = modelEl.value.trim();
+    if (Object.keys(entry).length) payload.providers[p] = entry;
+  }
+
+  try {
+    const putResp = await fetch(apiUrl("/settings"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const putBody = await putResp.json();
+    if (!putResp.ok) throw new Error(putBody.error || `HTTP ${putResp.status}`);
+
+    // Reload state in UI
+    _settingsCachedState = putBody;
+    await loadSettings();
+
+    if (provider === "none") {
+      if (msg) { msg.textContent = "✓ 已保存 — 未使用外部 Provider"; msg.setAttribute("data-status", "ok"); }
+    } else {
+      // Test connection
+      if (msg) { msg.textContent = "保存成功，测试连接中..."; msg.setAttribute("data-status", "info"); }
+      try {
+        const testResp = await fetch(apiUrl("/llm/test"), { method: "POST" });
+        const testBody = await testResp.json();
+        if (testResp.ok && testBody.ok) {
+          if (msg) { msg.textContent = `✓ 已保存，连接 ${provider} 成功`; msg.setAttribute("data-status", "ok"); }
+        } else {
+          if (msg) { msg.textContent = `✓ 已保存；测试失败: ${testBody.error || "未知错误"}`; msg.setAttribute("data-status", "err"); }
+        }
+      } catch (testErr) {
+        if (msg) { msg.textContent = `✓ 已保存；测试出错: ${testErr.message}`; msg.setAttribute("data-status", "err"); }
+      }
+    }
+    loadHealth();
+  } catch (err) {
+    if (msg) { msg.textContent = `保存失败: ${err.message}`; msg.setAttribute("data-status", "err"); }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+function setupSettingsDrawer() {
+  document.getElementById("settingsOpenButton")?.addEventListener("click", openSettingsDrawer);
+  document.getElementById("settingsCloseButton")?.addEventListener("click", closeSettingsDrawer);
+  document.getElementById("settingsCancelButton")?.addEventListener("click", closeSettingsDrawer);
+  document.getElementById("settingsBackdrop")?.addEventListener("click", closeSettingsDrawer);
+  document.getElementById("settingsSaveButton")?.addEventListener("click", saveAndTestSettings);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const drawer = document.getElementById("settingsDrawer");
+      if (drawer && !drawer.hidden) closeSettingsDrawer();
+    }
+  });
+  // Toggle password visibility
+  document.querySelectorAll(".settings-toggle-key").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (input) input.type = input.type === "password" ? "text" : "password";
+    });
+  });
+}
+
+// ── Result Tabs ──
+
+function setupResultTabs() {
+  const tabs = document.querySelectorAll(".result-tab");
+  const panels = document.querySelectorAll(".result-tab-panel");
+  if (!tabs.length) return;
+
+  function switchTab(tabName) {
+    tabs.forEach((t) => {
+      const active = t.dataset.tab === tabName;
+      t.classList.toggle("is-active", active);
+      t.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    panels.forEach((p) => {
+      p.classList.toggle("is-active", p.dataset.tab === tabName);
+    });
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+    tab.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        switchTab(tab.dataset.tab);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const all = Array.from(tabs);
+        const idx = all.indexOf(tab);
+        const next = e.key === "ArrowRight"
+          ? all[(idx + 1) % all.length]
+          : all[(idx - 1 + all.length) % all.length];
+        next.focus();
+        switchTab(next.dataset.tab);
       }
     });
   });
 }
 
-function expandSection(section, body) {
-  section.classList.add("open");
-  section.querySelector(".collapsible-header").setAttribute("aria-expanded", "true");
-  const inner = body.querySelector(".collapsible-body-inner") || body.firstElementChild;
-  const contentHeight = inner ? inner.scrollHeight : body.scrollHeight;
-  body.style.maxHeight = (contentHeight + 16) + "px";
+function activateResultTab(tabName) {
+  const tab = document.querySelector(`.result-tab[data-tab="${tabName}"]`);
+  if (tab) tab.click();
 }
 
-function collapseSection(section, body) {
-  section.classList.remove("open");
-  section.querySelector(".collapsible-header").setAttribute("aria-expanded", "false");
-  body.style.maxHeight = "0";
-}
+// ── Card Collapse / Resize System ──
 
-function autoExpandCollapsible(sectionId) {
-  const section = document.getElementById(sectionId);
-  if (!section) return;
-  const body = section.querySelector(".collapsible-body");
-  if (!body) return;
-  if (section.classList.contains("open")) {
-    const inner = body.querySelector(".collapsible-body-inner") || body.firstElementChild;
-    const contentHeight = inner ? inner.scrollHeight : body.scrollHeight;
-    body.style.maxHeight = (contentHeight + 16) + "px";
-    return;
+function setupCardCollapse() {
+  const STORAGE_KEY = "greenwash-collapsed-cards-v1";
+  const RESIZABLE = { input: 1, result: 1, history: 1 };
+  const EXISTING_HEADER = { history: ".panel-heading" };
+
+  document.body.classList.add("no-anim");
+  const entries = [];
+
+  document.querySelectorAll("[data-collapsible]").forEach((card) => {
+    const id = card.dataset.cardId;
+    if (!id) return;
+    const title = card.dataset.cardTitle || id;
+    const summaryId = card.dataset.cardSummaryId || "";
+    let headerEl;
+
+    if (EXISTING_HEADER[id]) {
+      headerEl = card.querySelector(EXISTING_HEADER[id]);
+      if (!headerEl) return;
+      wrapAfter(card, headerEl);
+    } else {
+      headerEl = mkHeader(title, summaryId);
+      wrapAll(card, headerEl);
+    }
+
+    const btn = mkBtn();
+    headerEl.appendChild(btn);
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCard(card);
+    });
+    headerEl.addEventListener("click", (e) => {
+      if (e.target.closest(".card-collapse-btn, button, a, select, input, textarea")) return;
+      toggleCard(card);
+    });
+
+    card.classList.add("card-collapsible");
+    if (RESIZABLE[id]) card.classList.add("resizable");
+    entries.push({ card, id, btn });
+  });
+
+  restoreStates(entries, STORAGE_KEY);
+  // Remove .no-anim after the next paint so initial state restoration doesn't animate.
+  // Use both rAF and setTimeout fallback (rAF may not fire in headless/background tabs).
+  const clearNoAnim = () => document.body.classList.remove("no-anim");
+  requestAnimationFrame(() => requestAnimationFrame(clearNoAnim));
+  setTimeout(clearNoAnim, 50);
+  setupMasterButton();
+
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey && e.shiftKey && (e.key === "C" || e.key === "c")) {
+      e.preventDefault();
+      const b = document.getElementById("collapseAllButton");
+      if (b) b.click();
+    }
+  });
+
+  function mkHeader(text, sid) {
+    const h = document.createElement("div");
+    h.className = "card-header";
+    const p = document.createElement("p");
+    p.className = "card-header-title";
+    p.textContent = text;
+    h.appendChild(p);
+    if (sid) {
+      const s = document.createElement("span");
+      s.className = "card-header-summary";
+      s.id = sid;
+      h.appendChild(s);
+    }
+    return h;
   }
-  expandSection(section, body);
+
+  function mkBtn() {
+    const b = document.createElement("button");
+    b.className = "card-collapse-btn";
+    b.type = "button";
+    b.setAttribute("aria-expanded", "true");
+    b.setAttribute("aria-label", "折叠");
+    const s = document.createElement("span");
+    s.className = "card-collapse-caret";
+    s.textContent = "▾";
+    b.appendChild(s);
+    return b;
+  }
+
+  function wrapAll(card, headerEl) {
+    const body = document.createElement("div");
+    body.className = "card-body";
+    const inner = document.createElement("div");
+    inner.className = "card-body-inner";
+    while (card.firstChild) inner.appendChild(card.firstChild);
+    body.appendChild(inner);
+    card.appendChild(headerEl);
+    card.appendChild(body);
+  }
+
+  function wrapAfter(card, headerEl) {
+    const body = document.createElement("div");
+    body.className = "card-body";
+    const inner = document.createElement("div");
+    inner.className = "card-body-inner";
+    let node = headerEl.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      inner.appendChild(node);
+      node = next;
+    }
+    body.appendChild(inner);
+    card.appendChild(body);
+  }
 }
 
+function toggleCard(card, forceExpanded) {
+  const wasExpanded = !card.classList.contains("is-collapsed");
+  const collapse = forceExpanded !== undefined ? !forceExpanded : wasExpanded;
+
+  if (collapse) {
+    const body = card.querySelector(".card-body");
+    if (body) {
+      if (body.contains(document.activeElement)) {
+        const b = card.querySelector(".card-collapse-btn");
+        if (b) b.focus();
+      }
+      body.style.height = "";
+    }
+  }
+
+  card.classList.toggle("is-collapsed", collapse);
+  const btn = card.querySelector(".card-collapse-btn");
+  if (btn) {
+    btn.setAttribute("aria-expanded", String(!collapse));
+    btn.setAttribute("aria-label", collapse ? "展开" : "折叠");
+  }
+
+  persistCardState(card.dataset.cardId, collapse);
+  updateMasterButton();
+}
+
+function persistCardState(id, collapsed) {
+  if (!id) return;
+  try {
+    const s = JSON.parse(localStorage.getItem("greenwash-collapsed-cards-v1") || "{}");
+    if (collapsed) s[id] = true;
+    else delete s[id];
+    localStorage.setItem("greenwash-collapsed-cards-v1", JSON.stringify(s));
+  } catch {}
+}
+
+function restoreStates(entries, storageKey) {
+  let stored;
+  try {
+    stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+  } catch {
+    stored = {};
+  }
+  entries.forEach(({ card, id, btn }) => {
+    if (card.hidden) return;
+    if (stored[id]) {
+      card.classList.add("is-collapsed");
+      btn.setAttribute("aria-expanded", "false");
+      btn.setAttribute("aria-label", "展开");
+    }
+  });
+}
+
+function setupMasterButton() {
+  const mb = document.getElementById("collapseAllButton");
+  if (!mb) return;
+  mb.addEventListener("click", () => {
+    const cards = Array.from(document.querySelectorAll(".card-collapsible"));
+    const expanded = cards.filter((c) => !c.classList.contains("is-collapsed")).length;
+    const doCollapse = expanded >= cards.length / 2;
+    cards.forEach((c, i) =>
+      setTimeout(() => toggleCard(c, !doCollapse), i * 20)
+    );
+    if (doCollapse) {
+      setTimeout(
+        () => window.scrollTo({ top: 0, behavior: "smooth" }),
+        cards.length * 20 + 100
+      );
+    }
+  });
+  updateMasterButton();
+}
+
+function updateMasterButton() {
+  const mb = document.getElementById("collapseAllButton");
+  if (!mb) return;
+  const all = document.querySelectorAll(".card-collapsible");
+  let exp = 0;
+  all.forEach((c) => {
+    if (!c.classList.contains("is-collapsed")) exp++;
+  });
+  mb.textContent = exp >= all.length / 2 ? "⊟ 全部折叠" : "⊞ 全部展开";
+}
+
+// Auto-expand a card by its data-card-id (used after analysis adds details)
+function autoExpandCard(cardId) {
+  const card = document.querySelector(`[data-card-id="${cardId}"]`);
+  if (!card) return;
+  if (card.classList.contains("is-collapsed")) {
+    toggleCard(card, true);
+  }
+}
+
+// Compatibility shim: resetAllCollapsibles is called by clearButton.
+// Now it collapses the 3 detail cards (emotion/llm/verification) and resets their summaries.
 function resetAllCollapsibles() {
-  document.querySelectorAll(".collapsible-section.open").forEach((section) => {
-    const body = section.querySelector(".collapsible-body");
-    if (body) collapseSection(section, body);
+  ["emotion", "llm", "verification"].forEach((cardId) => {
+    const card = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (card && !card.classList.contains("is-collapsed")) {
+      toggleCard(card, false);
+    }
   });
   const emotionSummary = document.getElementById("emotionCollapsibleSummary");
   const llmSummary = document.getElementById("llmCollapsibleSummary");
@@ -2113,7 +2955,13 @@ renderProgress({
   message: "输入文本后开始分析。",
 });
 exportButton.disabled = true;
-setupCollapsibles();
+setupResultTabs();
+setupCardCollapse();
+setupSettingsDrawer();
+setupDeepAnalyze();
+setupEvidenceUpload();
+updateEvidenceBadge();
+setInterval(updateEvidenceBadge, 60000);
 updatePdfUploadVisibility();
 loadHealth();
 loadHistory();

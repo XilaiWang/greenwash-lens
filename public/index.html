@@ -7,7 +7,7 @@
     <title>Greenwash Lens</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=0.9.0-ui-fix.1" />
+    <link rel="stylesheet" href="./styles.css?v=0.9.0-ui-fix.8" />
   </head>
   <body>
     <main class="app-shell">
@@ -17,13 +17,15 @@
           <h1>绿色声明风险检测</h1>
         </div>
         <div class="topbar-actions">
+          <button class="ghost-button collapse-all-button" id="collapseAllButton" type="button" title="Alt+Shift+C">⊟ 全部折叠</button>
+          <button class="settings-button" id="settingsOpenButton" type="button" aria-label="设置" title="设置">⚙</button>
           <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换暗色模式" title="切换暗色模式"></button>
           <div class="status-pill" id="engineStatus">应用启动中</div>
         </div>
       </header>
 
       <section class="workspace" aria-label="检测工作区">
-        <form class="input-panel" id="analysisForm">
+        <form class="input-panel" id="analysisForm" data-collapsible data-card-id="input" data-card-title="输入">
           <section class="start-guide" aria-label="开始指引">
             <div>
               <p class="metric-label">开始方式</p>
@@ -99,6 +101,10 @@
 
           <div class="button-row">
             <button class="primary-button" type="submit">开始分析</button>
+            <button class="secondary-button deep-button" id="deepAnalyzeButton" type="button" disabled title="需配置外部模型后启用">
+              深度分析
+              <span class="info-tooltip" tabindex="0" aria-label="深度分析说明" title="配置 LLM Provider 后启用 M3/M4/M5 深度分析（模糊度、包装强度、承诺-行动落差），输出 TGRI 综合风险指数。">ⓘ</span>
+            </button>
           </div>
           <div class="button-row-secondary">
             <button class="secondary-button" id="sampleButton" type="button">示例</button>
@@ -115,7 +121,7 @@
           <div class="doc-viewer-body" id="docViewerBody"></div>
         </section>
 
-        <section class="result-panel" aria-live="polite" aria-label="检测结果">
+        <section class="result-panel" aria-live="polite" aria-label="检测结果" data-collapsible data-card-id="result" data-card-title="检测结果">
           <div class="welcome-panel" id="welcomePanel">
             <div class="welcome-icon-row">
               <span class="welcome-icon">🔍</span>
@@ -178,129 +184,88 @@
             </div>
           </section>
 
-          <div class="breakdown-grid" id="breakdownGrid">
-            <div class="breakdown-item">
-              <span>模糊表述</span>
-              <div class="bar-track"><div class="bar-fill" id="vaguenessBar"></div></div>
-              <strong id="vaguenessValue">0</strong>
-            </div>
-            <div class="breakdown-item">
-              <span>证据缺口</span>
-              <div class="bar-track"><div class="bar-fill" id="evidenceBar"></div></div>
-              <strong id="evidenceValue">0</strong>
-            </div>
-            <div class="breakdown-item">
-              <span>夸大风险</span>
-              <div class="bar-track"><div class="bar-fill" id="overclaimBar"></div></div>
-              <strong id="overclaimValue">0</strong>
-            </div>
-            <div class="breakdown-item">
-              <span>承诺落差</span>
-              <div class="bar-track"><div class="bar-fill" id="promiseBar"></div></div>
-              <strong id="promiseValue">0</strong>
-            </div>
+          <div class="result-tabs" role="tablist" aria-label="分析结果视图">
+            <button class="result-tab is-active" role="tab" aria-selected="true" data-tab="overview" type="button">概览</button>
+            <button class="result-tab" role="tab" aria-selected="false" data-tab="details" type="button">细节</button>
+            <button class="result-tab" role="tab" aria-selected="false" data-tab="advanced" type="button">高级</button>
           </div>
 
-          <div class="skeleton-group" style="gap:10px;">
-            <div class="skeleton-bar"></div>
-            <div class="skeleton-bar"></div>
-            <div class="skeleton-bar"></div>
-            <div class="skeleton-bar"></div>
-          </div>
-
-          <div class="evidence-strip" id="evidenceStrip">
-            <div class="evidence-item" id="quantifiedItem">量化指标</div>
-            <div class="evidence-item" id="timelineItem">时间边界</div>
-            <div class="evidence-item" id="proofItem">外部证明</div>
-            <div class="evidence-item" id="actionItem">行动证据</div>
-            <div class="evidence-item" id="scopeItem">范围/基准</div>
-          </div>
-
-          <div class="skeleton-group evidence-skeleton" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;">
-            <div class="skeleton-chip"></div>
-            <div class="skeleton-chip"></div>
-            <div class="skeleton-chip"></div>
-            <div class="skeleton-chip"></div>
-            <div class="skeleton-chip"></div>
-          </div>
-
-          <div class="skeleton-group findings-skeleton" style="grid-template-columns:1fr 1fr;gap:14px;">
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line"></div>
-          </div>
-
-          <div class="collapsible-section" id="emotionCollapsible">
-            <button class="collapsible-header" type="button" aria-expanded="false" aria-controls="emotionPanel">
-              <span class="collapsible-title">三层情绪检测</span>
-              <span class="collapsible-summary" id="emotionCollapsibleSummary">待分析</span>
-              <span class="collapsible-arrow" aria-hidden="true"></span>
-            </button>
-            <div class="collapsible-body" id="emotionPanelBody">
-              <div class="emotion-panel" id="emotionPanel" data-level="none">
-                <p class="emotion-plain-explain" id="emotionPlainExplain">待分析。</p>
-                <div class="emotion-header">
-                  <div>
-                    <strong id="emotionScore">0</strong>
-                  </div>
-                  <span class="emotion-level" id="emotionLevel">none</span>
-                </div>
-                <p class="emotion-warning" id="emotionWarning" hidden>三层结果分歧较大，建议人工复核。</p>
-                <div class="emotion-bars" id="emotionBars">
-                  <div class="emotion-bar-row">
-                    <span>规则层</span>
-                    <div class="bar-track"><div class="bar-fill" id="emotionRuleBar"></div></div>
-                    <strong id="emotionRuleValue">0</strong>
-                  </div>
-                  <div class="emotion-bar-row">
-                    <span>NLP层</span>
-                    <div class="bar-track"><div class="bar-fill" id="emotionNlpBar"></div></div>
-                    <strong id="emotionNlpValue">离线</strong>
-                  </div>
-                  <div class="emotion-bar-row">
-                    <span>LLM层</span>
-                    <div class="bar-track"><div class="bar-fill" id="emotionLlmBar"></div></div>
-                    <strong id="emotionLlmValue">0</strong>
-                  </div>
-                </div>
-                <div class="emotion-meta">
-                  <span id="emotionConsistency">一致性：0%</span>
-                  <span id="emotionLayers">使用层数：0</span>
-                </div>
-                <div class="emotion-nlp-detail" id="emotionNlpDetail" hidden></div>
+          <div class="result-tab-panel is-active" role="tabpanel" data-tab="overview">
+            <div class="breakdown-grid" id="breakdownGrid">
+              <div class="breakdown-item">
+                <span>模糊表述</span>
+                <div class="bar-track"><div class="bar-fill" id="vaguenessBar"></div></div>
+                <strong id="vaguenessValue">0</strong>
+              </div>
+              <div class="breakdown-item">
+                <span>证据缺口</span>
+                <div class="bar-track"><div class="bar-fill" id="evidenceBar"></div></div>
+                <strong id="evidenceValue">0</strong>
+              </div>
+              <div class="breakdown-item">
+                <span>夸大风险</span>
+                <div class="bar-track"><div class="bar-fill" id="overclaimBar"></div></div>
+                <strong id="overclaimValue">0</strong>
+              </div>
+              <div class="breakdown-item">
+                <span>承诺落差</span>
+                <div class="bar-track"><div class="bar-fill" id="promiseBar"></div></div>
+                <strong id="promiseValue">0</strong>
               </div>
             </div>
+
+            <div class="skeleton-group" style="gap:10px;">
+              <div class="skeleton-bar"></div>
+              <div class="skeleton-bar"></div>
+              <div class="skeleton-bar"></div>
+              <div class="skeleton-bar"></div>
+            </div>
+
+            <div class="evidence-strip" id="evidenceStrip">
+              <div class="evidence-item" id="quantifiedItem">量化指标</div>
+              <div class="evidence-item" id="timelineItem">时间边界</div>
+              <div class="evidence-item" id="proofItem">外部证明</div>
+              <div class="evidence-item" id="actionItem">行动证据</div>
+              <div class="evidence-item" id="scopeItem">范围/基准</div>
+            </div>
+
+            <div class="skeleton-group evidence-skeleton" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;">
+              <div class="skeleton-chip"></div>
+              <div class="skeleton-chip"></div>
+              <div class="skeleton-chip"></div>
+              <div class="skeleton-chip"></div>
+              <div class="skeleton-chip"></div>
+            </div>
           </div>
 
-          <div class="findings">
-            <div>
-              <p class="metric-label">风险因子</p>
-              <ul id="riskFactors" class="factor-list">
-                <li>暂无结果</li>
-              </ul>
+          <div class="result-tab-panel" role="tabpanel" data-tab="details">
+            <div class="skeleton-group findings-skeleton" style="grid-template-columns:1fr 1fr;gap:14px;">
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line"></div>
             </div>
-            <div>
-              <p class="metric-label">命中片段</p>
-              <ul id="matchedSignals" class="signal-list">
-                <li>暂无结果</li>
-              </ul>
-            </div>
-          </div>
 
-          <div class="collapsible-section" id="llmCollapsible">
-            <button class="collapsible-header" type="button" aria-expanded="false" aria-controls="llmPanelBody">
-              <span class="collapsible-title">LLM 增强判断</span>
-              <span class="collapsible-summary" id="llmCollapsibleSummary">未配置外部模型</span>
-              <span class="collapsible-arrow" aria-hidden="true"></span>
-            </button>
-            <div class="collapsible-body" id="llmPanelBody">
-              <div class="llm-panel" id="llmPanel">
-                <p id="llmSummary">未配置外部模型 API，当前使用本地规则引擎。</p>
-                <ul id="llmAnnotations" class="signal-list">
-                  <li>暂无外部模型补充结果</li>
+            <div class="findings" data-collapsible data-card-id="findings" data-card-title="风险因子 & 命中片段">
+              <div>
+                <p class="metric-label">风险因子</p>
+                <ul id="riskFactors" class="factor-list">
+                  <li>暂无结果</li>
                 </ul>
               </div>
+              <div>
+                <p class="metric-label">命中片段</p>
+                <ul id="matchedSignals" class="signal-list">
+                  <li>暂无结果</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="llm-panel" id="llmPanel" data-collapsible data-card-id="llm" data-card-title="LLM 增强判断" data-card-summary-id="llmCollapsibleSummary">
+              <p id="llmSummary">未配置外部模型 API，当前使用本地规则引擎。</p>
+              <ul id="llmAnnotations" class="signal-list">
+                <li>暂无外部模型补充结果</li>
+              </ul>
               <div class="llm-detail-panel" id="vaguePanel" hidden>
                 <p class="metric-label">模糊表述诊断与改写建议</p>
                 <div id="vagueList"></div>
@@ -321,25 +286,202 @@
             </div>
           </div>
 
-          <div class="collapsible-section" id="verificationCollapsible">
-            <button class="collapsible-header" type="button" aria-expanded="false" aria-controls="verificationPanelBody">
-              <span class="collapsible-title">结果自检</span>
-              <span class="collapsible-summary" id="verificationCollapsibleSummary">待分析</span>
-              <span class="collapsible-arrow" aria-hidden="true"></span>
-            </button>
-            <div class="collapsible-body" id="verificationPanelBody">
-              <div class="verification-panel" id="verificationPanel" aria-label="结果自检">
-                <p id="verificationSummary">分析完成后会显示自动识别和外部模型的自我校验结果。</p>
-                <ul id="verificationChecks" class="signal-list" data-overall="idle">
-                  <li>暂无校验结果</li>
-                </ul>
+          <div class="result-tab-panel" role="tabpanel" data-tab="advanced">
+            <div class="emotion-panel" id="emotionPanel" data-level="none" data-collapsible data-card-id="emotion" data-card-title="三层情绪检测" data-card-summary-id="emotionCollapsibleSummary">
+              <p class="emotion-plain-explain" id="emotionPlainExplain">待分析。</p>
+              <div class="emotion-header">
+                <div>
+                  <strong id="emotionScore">0</strong>
+                </div>
+                <span class="emotion-level" id="emotionLevel">none</span>
               </div>
+              <p class="emotion-warning" id="emotionWarning" hidden>三层结果分歧较大，建议人工复核。</p>
+              <div class="emotion-bars" id="emotionBars">
+                <div class="emotion-bar-row">
+                  <span>规则层</span>
+                  <div class="bar-track"><div class="bar-fill" id="emotionRuleBar"></div></div>
+                  <strong id="emotionRuleValue">0</strong>
+                </div>
+                <div class="emotion-bar-row">
+                  <span>NLP层</span>
+                  <div class="bar-track"><div class="bar-fill" id="emotionNlpBar"></div></div>
+                  <strong id="emotionNlpValue">离线</strong>
+                </div>
+                <div class="emotion-bar-row">
+                  <span>LLM层</span>
+                  <div class="bar-track"><div class="bar-fill" id="emotionLlmBar"></div></div>
+                  <strong id="emotionLlmValue">0</strong>
+                </div>
+              </div>
+              <div class="emotion-meta">
+                <span id="emotionConsistency">一致性：0%</span>
+                <span id="emotionLayers">使用层数：0</span>
+              </div>
+              <div class="emotion-nlp-detail" id="emotionNlpDetail" hidden></div>
             </div>
+
+            <div class="verification-panel" id="verificationPanel" aria-label="结果自检" data-collapsible data-card-id="verification" data-card-title="结果自检" data-card-summary-id="verificationCollapsibleSummary">
+              <p id="verificationSummary">分析完成后会显示自动识别和外部模型的自我校验结果。</p>
+              <ul id="verificationChecks" class="signal-list" data-overall="idle">
+                <li>暂无校验结果</li>
+              </ul>
+            </div>
+
+            <section class="deep-result-section" id="deepResultSection" hidden aria-label="深度分析结果">
+              <div class="deep-result-header">
+                <p class="metric-label">M3/M4/M5 深度分析</p>
+                <span class="deep-result-provider" id="deepResultProvider"></span>
+              </div>
+              <div class="deep-gate" id="deepGate" hidden>
+                <span class="deep-gate-result" id="deepGateResult"></span>
+                <span class="deep-gate-direction" id="deepGateDirection"></span>
+                <span class="deep-gate-types" id="deepGateTypes"></span>
+              </div>
+              <div class="deep-modules" id="deepModules">
+                <div class="deep-module-card" id="deepM3Card">
+                  <div class="deep-module-header">
+                    <strong>M3 模糊度</strong>
+                    <span class="deep-module-score" id="deepM3Score">0</span>
+                  </div>
+                  <div class="bar-track"><div class="bar-fill deep-bar deep-bar-amber" id="deepM3Bar"></div></div>
+                  <div class="deep-module-detail" id="deepM3Detail"></div>
+                </div>
+                <div class="deep-module-card" id="deepM4Card">
+                  <div class="deep-module-header">
+                    <strong>M4 包装强度</strong>
+                    <span class="deep-module-score" id="deepM4Score">0</span>
+                  </div>
+                  <div class="bar-track"><div class="bar-fill deep-bar deep-bar-blue" id="deepM4Bar"></div></div>
+                  <div class="deep-module-detail" id="deepM4Detail"></div>
+                </div>
+                <div class="deep-module-card" id="deepM5Card">
+                  <div class="deep-module-header">
+                    <strong>M5 承诺-行动落差</strong>
+                    <span class="deep-module-score" id="deepM5Score">0</span>
+                  </div>
+                  <div class="bar-track"><div class="bar-fill deep-bar deep-bar-red" id="deepM5Bar"></div></div>
+                  <div class="deep-module-detail" id="deepM5Detail"></div>
+                </div>
+              </div>
+              <div class="deep-scoring" id="deepScoring">
+                <div class="deep-tgri">
+                  <span class="deep-tgri-label">TGRI 综合风险指数</span>
+                  <strong id="deepTGRI">0</strong>
+                  <span class="deep-risk-badge" id="deepRiskBadge">待分析</span>
+                </div>
+                <span class="deep-type" id="deepPrimaryType"></span>
+              </div>
+              <div class="deep-claims-section" id="deepClaimsSection">
+                <p class="metric-label">声明逐条分析（<span id="deepClaimsCount">0</span>）</p>
+                <div id="deepClaimsList"></div>
+              </div>
+              <div class="deep-findings">
+                <div>
+                  <p class="metric-label">关键发现</p>
+                  <ul id="deepKeyFindings" class="factor-list"></ul>
+                </div>
+                <div>
+                  <p class="metric-label">改进建议</p>
+                  <ul id="deepRecommendations" class="factor-list"></ul>
+                </div>
+              </div>
+              <div class="deep-qc">
+                <span>置信度：<strong id="deepConfidence">0%</strong></span>
+                <span id="deepConfidenceReason"></span>
+              </div>
+            </section>
           </div>
         </section>
       </section>
 
-      <section class="history-panel" aria-label="最近分析">
+      <section class="evidence-panel" id="evidencePanel" aria-label="证据核验" data-collapsible data-card-id="evidence" data-card-title="证据核验">
+        <div class="panel-heading">
+          <div>
+            <p class="metric-label">证据核验</p>
+            <h2>ESG 报告自核验</h2>
+          </div>
+          <span class="evidence-badge" id="evidenceStatusBadge">引擎未启动</span>
+        </div>
+
+        <div class="evidence-body" id="evidenceBody">
+          <div class="evidence-upload-zone" id="evidenceUploadZone" role="button" tabindex="0" aria-label="上传 ESG 报告 PDF">
+            <span class="evidence-upload-icon" aria-hidden="true">&#128196;</span>
+            <p class="evidence-upload-label">拖拽 ESG 报告 PDF 到此处，或<span class="evidence-upload-link">点击选择文件</span></p>
+            <p class="evidence-upload-hint">支持中英文 ESG/CSR/可持续发展报告，最大 50MB</p>
+            <input type="file" id="evidencePdfInput" accept=".pdf,application/pdf" hidden />
+          </div>
+
+          <div class="evidence-meta-row">
+            <div class="field-row">
+              <label for="evidenceCompany">公司名称</label>
+              <input type="text" id="evidenceCompany" placeholder="输入公司名称" />
+            </div>
+            <div class="field-row">
+              <label for="evidenceYear">报告年份</label>
+              <input type="number" id="evidenceYear" value="2024" min="2000" max="2030" />
+            </div>
+            <div class="field-row">
+              <label for="evidenceMode">分析模式</label>
+              <select id="evidenceMode">
+                <option value="realtime" selected>实时（~60秒）</option>
+                <option value="batch">批量（~15分钟，成本减半）</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="primary-button" id="evidenceStartButton" type="button" disabled>开始证据核验</button>
+
+          <div class="evidence-progress" id="evidenceProgress" hidden>
+            <div class="evidence-progress-header">
+              <strong id="evidenceProgressLabel">上传中</strong>
+              <span class="evidence-progress-pct" id="evidenceProgressPct">0%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="evidenceProgressFill"></div>
+            </div>
+            <p id="evidenceProgressMsg"></p>
+          </div>
+
+          <div class="evidence-result" id="evidenceResult" hidden>
+            <div class="evidence-dual-score">
+              <div class="evidence-score-card score-text">
+                <p class="metric-label">语言风险</p>
+                <strong id="evidenceTextRisk">--</strong>
+                <span class="evidence-sub" id="evidenceTextRiskLabel">待分析</span>
+              </div>
+              <div class="evidence-score-card score-evidence">
+                <p class="metric-label">证据风险</p>
+                <strong id="evidenceEvidenceRisk">--</strong>
+                <span class="evidence-sub" id="evidenceEvidenceRiskLabel">待分析</span>
+              </div>
+              <div class="evidence-score-card score-gri">
+                <p class="metric-label">综合 GRI</p>
+                <strong id="evidenceGRI">--</strong>
+                <span class="evidence-sub" id="evidenceGRILabel">待分析</span>
+              </div>
+            </div>
+
+            <div class="evidence-verdict-dist" id="evidenceVerdictDist">
+              <span class="verdict-chip supported" id="evSupported">✅ 支持: 0</span>
+              <span class="verdict-chip partial" id="evPartial">⚠️ 部分支持: 0</span>
+              <span class="verdict-chip contradicted" id="evContradicted">❌ 矛盾: 0</span>
+              <span class="verdict-chip insufficient" id="evInsufficient">❓ 证据不足: 0</span>
+            </div>
+
+            <div class="evidence-findings" id="evidenceFindings">
+              <p class="metric-label">关键发现</p>
+              <ul id="evidenceFindingsList" class="factor-list"></ul>
+            </div>
+
+            <div class="evidence-claims" id="evidenceClaims">
+              <p class="metric-label">声明逐条分析 (<span id="evidenceClaimsCount">0</span>)</p>
+              <div id="evidenceClaimsList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="history-panel" aria-label="最近分析" data-collapsible data-card-id="history" data-card-title="检测历史">
         <div class="panel-heading">
           <div>
             <p class="metric-label">最近分析</p>
@@ -368,9 +510,95 @@
       </section>
     </main>
 
-    <script src="./engine-core.js?v=0.9.0-ui-fix.1"></script>
-    <script src="./local-engine.js?v=0.9.0-ui-fix.1"></script>
-    <script src="./app-utils.js?v=0.9.0-ui-fix.1"></script>
-    <script src="./app.js?v=0.9.0-ui-fix.1"></script>
+    <div class="settings-backdrop" id="settingsBackdrop" hidden></div>
+    <aside class="settings-drawer" id="settingsDrawer" aria-hidden="true" hidden>
+      <div class="settings-drawer-header">
+        <h2>设置</h2>
+        <button class="ghost-button" id="settingsCloseButton" type="button">关闭</button>
+      </div>
+      <div class="settings-drawer-body">
+        <fieldset class="settings-group">
+          <legend>活跃 Provider</legend>
+          <div class="settings-radio-row">
+            <label><input type="radio" name="settingsProvider" value="none"> 无（本地规则）</label>
+            <label><input type="radio" name="settingsProvider" value="openai"> OpenAI</label>
+            <label><input type="radio" name="settingsProvider" value="claude"> Claude</label>
+            <label><input type="radio" name="settingsProvider" value="gemini"> Gemini</label>
+            <label><input type="radio" name="settingsProvider" value="deepseek"> DeepSeek</label>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group" id="settingsGroupOpenai">
+          <legend>OpenAI <span class="settings-status" id="settingsStatusOpenai">未配置</span></legend>
+          <label class="settings-label">API Key
+            <div class="settings-key-row">
+              <input type="password" id="settingsOpenaiKey" class="settings-key-input" placeholder="保留原值不变 / 输入新 Key" autocomplete="off">
+              <button type="button" class="ghost-button settings-toggle-key" data-target="settingsOpenaiKey" aria-label="显示/隐藏">👁</button>
+            </div>
+          </label>
+          <label class="settings-label">模型
+            <input type="text" id="settingsOpenaiModel" class="settings-model-input" placeholder="模型名">
+          </label>
+        </fieldset>
+
+        <fieldset class="settings-group" id="settingsGroupClaude">
+          <legend>Claude <span class="settings-status" id="settingsStatusClaude">未配置</span></legend>
+          <label class="settings-label">API Key
+            <div class="settings-key-row">
+              <input type="password" id="settingsClaudeKey" class="settings-key-input" placeholder="保留原值不变 / 输入新 Key" autocomplete="off">
+              <button type="button" class="ghost-button settings-toggle-key" data-target="settingsClaudeKey" aria-label="显示/隐藏">👁</button>
+            </div>
+          </label>
+          <label class="settings-label">模型
+            <input type="text" id="settingsClaudeModel" class="settings-model-input" placeholder="模型名">
+          </label>
+        </fieldset>
+
+        <fieldset class="settings-group" id="settingsGroupGemini">
+          <legend>Gemini <span class="settings-status" id="settingsStatusGemini">未配置</span></legend>
+          <label class="settings-label">API Key
+            <div class="settings-key-row">
+              <input type="password" id="settingsGeminiKey" class="settings-key-input" placeholder="保留原值不变 / 输入新 Key" autocomplete="off">
+              <button type="button" class="ghost-button settings-toggle-key" data-target="settingsGeminiKey" aria-label="显示/隐藏">👁</button>
+            </div>
+          </label>
+          <label class="settings-label">模型
+            <input type="text" id="settingsGeminiModel" class="settings-model-input" placeholder="模型名">
+          </label>
+        </fieldset>
+
+        <fieldset class="settings-group" id="settingsGroupDeepseek">
+          <legend>DeepSeek <span class="settings-status" id="settingsStatusDeepseek">未配置</span></legend>
+          <label class="settings-label">API Key
+            <div class="settings-key-row">
+              <input type="password" id="settingsDeepseekKey" class="settings-key-input" placeholder="保留原值不变 / 输入新 Key" autocomplete="off">
+              <button type="button" class="ghost-button settings-toggle-key" data-target="settingsDeepseekKey" aria-label="显示/隐藏">👁</button>
+            </div>
+          </label>
+          <label class="settings-label">模型
+            <input type="text" id="settingsDeepseekModel" class="settings-model-input" placeholder="模型名">
+          </label>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend>其它</legend>
+          <label class="settings-label">请求超时（ms）
+            <input type="number" id="settingsTimeout" class="settings-timeout-input" min="1000" max="300000" step="1000">
+          </label>
+        </fieldset>
+      </div>
+      <div class="settings-drawer-footer">
+        <p class="settings-message" id="settingsMessage"></p>
+        <div class="settings-drawer-actions">
+          <button class="ghost-button" id="settingsCancelButton" type="button">取消</button>
+          <button class="primary-button" id="settingsSaveButton" type="button">保存并测试</button>
+        </div>
+      </div>
+    </aside>
+
+    <script src="./engine-core.js?v=0.9.0-ui-fix.8"></script>
+    <script src="./local-engine.js?v=0.9.0-ui-fix.8"></script>
+    <script src="./app-utils.js?v=0.9.0-ui-fix.8"></script>
+    <script src="./app.js?v=0.9.0-ui-fix.8"></script>
   </body>
 </html>

@@ -1,9 +1,10 @@
+const fs = require("node:fs");
+const path = require("node:path");
+
 const { ENGINE_VERSION } = require("./greenwash-engine");
 const { readJson, readRawBody, sendJson } = require("./http-utils");
 const {
   classifyText,
-  CONTEXT_LABELS,
-  SECTOR_LABELS,
   VALID_CONTEXT_TYPES,
   VALID_SECTORS,
 } = require("./text-classifier");
@@ -15,24 +16,48 @@ const {
 } = require("./history-store");
 const { analyzeText } = require("./services/analysis-service");
 const {
-  classifyWithLLM,
   getServiceStatus,
   summarizeHistory,
   testLlmConnection,
 } = require("./services/llm-service");
 const { getNlpServiceStatus } = require("./services/nlp-service-client");
 const { createAnalysisJob, getJob } = require("./analysis-jobs");
+const { readSettings, writeSettings } = require("./services/settings-service");
 const { extractFromBuffer } = require("./pdf-extractor");
+const { deepAnalyze } = require("./services/deep-analysis-service");
 const { MAX_TEXT_LENGTH } = require("./pdf-cleaner");
 
-async function handleApi(request, response, url, csrfToken) {
-  const pathname = normalizeApiPath(url.pathname);
+const EVIDENCE_SIDECAR_URL = "http://127.0.0.1:5176";
+let _evidenceSidecarAvailable = null;
+let _evidenceSidecarCheckedAt = 0;
 
-  if ((request.method === "POST" || request.method === "DELETE") &&
-      request.headers["x-csrf-token"] !== csrfToken) {
-    sendJson(response, 403, { error: "缺少或无效的 CSRF 令牌。" });
+function getBuildTime() {
+  // Check asar mtime first (most reliable for production)
+  const asarPath = path.join(__dirname, "..", "..", "app.asar");
+  try { return fs.statSync(asarPath).mtime.toISOString(); } catch {}
+  // Fallback: check source dir mtime
+  try { return fs.statSync(__dirname).mtime.toISOString(); } catch {}
+  return new Date().toISOString();
+}
+
+async function checkEvidenceSidecar() {
+  const now = Date.now();
+  // Only cache successes for 10s; always re-check failures
+  if (_evidenceSidecarCheckedAt && _evidenceSidecarAvailable && now - _evidenceSidecarCheckedAt < 10000) {
     return true;
   }
+  try {
+    const resp = await fetch(`${EVIDENCE_SIDECAR_URL}/health`, { signal: AbortSignal.timeout(2000) });
+    _evidenceSidecarAvailable = resp.ok;
+  } catch {
+    _evidenceSidecarAvailable = false;
+  }
+  _evidenceSidecarCheckedAt = now;
+  return _evidenceSidecarAvailable;
+}
+
+async function handleApi(request, response, url) {
+  const pathname = normalizeApiPath(url.pathname);
 
   if (request.method === "GET" && pathname === "/health") {
     sendJson(response, 200, {
@@ -43,6 +68,14 @@ async function handleApi(request, response, url, csrfToken) {
       storage: getStorageInfo(),
       llmService: getServiceStatus(),
       nlpService: await getNlpServiceStatus(),
+      evidenceEngine: await checkEvidenceSidecar() ? {
+        available: true,
+        url: EVIDENCE_SIDECAR_URL,
+      } : {
+        available: false,
+        url: EVIDENCE_SIDECAR_URL,
+      },
+      buildTime: getBuildTime(),
     });
     return true;
   }
@@ -67,26 +100,30 @@ async function handleApi(request, response, url, csrfToken) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/settings") {
+    sendJson(response, 200, readSettings());
+    return true;
+  }
+
+  if (request.method === "PUT" && pathname === "/settings") {
+    const body = await readJson(request);
+    try {
+      const result = writeSettings(body || {});
+      sendJson(response, 200, result);
+    } catch (err) {
+      sendJson(response, 400, { error: err.message || "保存失败" });
+    }
+    return true;
+  }
+
   if (request.method === "POST" && pathname === "/classify") {
     const body = await readJson(request);
     const normalized = validateAnalysisInput(body);
-    let classification = classifyText(normalized.text, {
-      contextType: normalized.contextType,
-      sector: normalized.sector,
-    });
-    const llmClassify = await classifyWithLLM(normalized.text);
-
-    if (llmClassify) {
-      classification = mergeClassification(classification, llmClassify, {
+    sendJson(response, 200, {
+      classification: classifyText(normalized.text, {
         contextType: normalized.contextType,
         sector: normalized.sector,
-      });
-    }
-
-    sendJson(response, 200, {
-      classification,
-      method: llmClassify ? "llm" : "keyword",
-      llmService: getServiceStatus(),
+      }),
     });
     return true;
   }
@@ -101,6 +138,17 @@ async function handleApi(request, response, url, csrfToken) {
     });
 
     sendJson(response, 200, payload);
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/deep-analyze") {
+    const body = validateAnalysisInput(await readJson(request));
+    const classification = body.classification || classifyText(body.text, {
+      contextType: body.contextType,
+      sector: body.sector,
+    });
+    const result = await deepAnalyze(body.text, classification);
+    sendJson(response, 200, result);
     return true;
   }
 
@@ -191,11 +239,10 @@ async function handleApi(request, response, url, csrfToken) {
       return true;
     }
     const { text, document, engine, warnings, stats } = await extractFromBuffer(pdfBuffer);
-    const responseDoc = safeDocument(document);
     sendJson(response, 200, {
       ok: true,
       text,
-      document: responseDoc,
+      document: document || [],
       engine,
       warnings: warnings || [],
       stats: stats || {},
@@ -205,25 +252,44 @@ async function handleApi(request, response, url, csrfToken) {
     return true;
   }
 
+  // --- Evidence Engine Proxy ---
+  if (pathname.startsWith("/evidence/")) {
+    const sidecarPath = pathname.replace("/evidence", "");
+    const available = await checkEvidenceSidecar();
+
+    if (!available) {
+      sendJson(response, 503, {
+        error: "证据核验引擎未启动。请确认 GEMINI_API_KEY 已配置且 Python sidecar 正在运行。",
+      });
+      return true;
+    }
+
+    try {
+      const sidecarResp = await fetch(`${EVIDENCE_SIDECAR_URL}${sidecarPath}`, {
+        method: request.method,
+        headers: { "Content-Type": request.headers["content-type"] || "application/json" },
+        body: request.method === "POST" ? await readRawBody(request, 55 * 1024 * 1024) : undefined,
+        signal: AbortSignal.timeout(120000),
+      });
+      const body = await sidecarResp.text();
+      response.writeHead(sidecarResp.status, {
+        "Content-Type": "application/json; charset=utf-8",
+      });
+      response.end(body);
+    } catch {
+      sendJson(response, 502, {
+        error: "证据核验引擎无响应。请稍后重试。",
+      });
+    }
+    return true;
+  }
+
   if (url.pathname.startsWith("/api/")) {
     sendJson(response, 404, { error: "接口不存在。" });
     return true;
   }
 
   return false;
-}
-
-const MAX_DOC_JSON_SIZE = 500 * 1024;
-
-function safeDocument(doc) {
-  if (!doc || !doc.length) return [];
-  const json = JSON.stringify(doc);
-  if (json.length <= MAX_DOC_JSON_SIZE) return doc;
-  let truncated = doc;
-  while (truncated.length > 1 && JSON.stringify(truncated).length > MAX_DOC_JSON_SIZE) {
-    truncated = truncated.slice(0, Math.max(1, truncated.length - 1));
-  }
-  return truncated;
 }
 
 function normalizeApiPath(pathname) {
@@ -268,51 +334,6 @@ function normalizeEnumValue(value, allowedValues, fieldName) {
   }
 
   return value;
-}
-
-function mergeClassification(keywordClass, llmResult, overrides) {
-  return {
-    ...keywordClass,
-    classificationMethod: {
-      context: llmResult.contextType ? "llm" : "keyword",
-      sector: llmResult.sector ? "llm" : "keyword",
-    },
-    context: buildClassPart(
-      keywordClass.context,
-      llmResult.contextType,
-      overrides.contextType,
-      CONTEXT_LABELS,
-    ),
-    sector: buildClassPart(
-      keywordClass.sector,
-      llmResult.sector,
-      overrides.sector,
-      SECTOR_LABELS,
-    ),
-    llmClassify: {
-      contextType: llmResult.contextType,
-      sector: llmResult.sector,
-      confidence: llmResult.confidence,
-      reasoning: llmResult.reasoning,
-    },
-  };
-}
-
-function buildClassPart(keywordPart, llmValue, overrideValue, labels) {
-  if (overrideValue && overrideValue !== "auto" && labels[overrideValue]) {
-    return keywordPart;
-  }
-
-  if (llmValue && labels[llmValue]) {
-    return {
-      detected: keywordPart.detected,
-      selected: llmValue,
-      source: "llm",
-      label: labels[llmValue],
-    };
-  }
-
-  return keywordPart;
 }
 
 module.exports = {
