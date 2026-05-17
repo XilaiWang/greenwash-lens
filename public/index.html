@@ -24,6 +24,12 @@
         </div>
       </header>
 
+      <div class="build-info-bar" id="buildInfoBar" data-status="unknown" hidden>
+        <span class="build-info-dot" aria-hidden="true"></span>
+        <span class="build-info-text" id="buildInfoText">检查版本中…</span>
+        <a class="build-info-link" id="buildInfoLink" href="#" target="_blank" rel="noopener" hidden>查看</a>
+      </div>
+
       <section class="workspace" aria-label="检测工作区">
         <form class="input-panel" id="analysisForm" data-collapsible data-card-id="input" data-card-title="输入">
           <section class="start-guide" aria-label="开始指引">
@@ -600,5 +606,6 @@
     <script src="./local-engine.js?v=0.9.0-ui-fix.8"></script>
     <script src="./app-utils.js?v=0.9.0-ui-fix.8"></script>
     <script src="./app.js?v=0.9.0-ui-fix.8"></script>
+    <script src="./build-info-check.js?v=0.9.0-ui-fix.8" defer></script>
   </body>
 </html>
