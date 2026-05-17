@@ -3212,3 +3212,13 @@ mark.future-signal {
 }
 .build-info-link:hover { text-decoration: underline; }
 .build-info-bar[data-status="latest"] .build-info-link { display: none; }
+
+/* Evidence upload zone auto-filled state (PDF reused from main upload) */
+.evidence-upload-zone.auto-filled {
+  border-style: solid;
+  border-color: var(--green);
+  background: rgba(13, 138, 76, 0.04);
+}
+.evidence-upload-zone.auto-filled .evidence-upload-icon {
+  color: var(--green);
+}

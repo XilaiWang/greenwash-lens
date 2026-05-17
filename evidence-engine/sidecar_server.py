@@ -140,8 +140,19 @@ async def _run_analysis(analysis_id: str, pdf_path: str, company: str, year: int
         # ── L3: Verify claims ──
         a["status"] = AnalysisStatus.VERIFYING.value
         a["progress"] = 60
+        a["verdicts_complete"] = 0
+
+        # Live progress: bump verdicts_complete + progress as each claim's
+        # verdict comes in, so /status callers see "7/25 → 12/25 → 25/25"
+        # instead of null/null/25 only at the end.
+        def _on_verdict(done, total, _verdict):
+            a["verdicts_complete"] = done
+            # L3 occupies the 60–85 progress range. Interpolate.
+            if total:
+                a["progress"] = 60 + int((done / total) * 25)
+
         verdicts = await verify_all_claims(
-            claims, store_name, sys_cache, doc_cache
+            claims, store_name, sys_cache, doc_cache, on_verdict=_on_verdict,
         )
         a["verdicts"] = [v.model_dump() for v in verdicts]
         a["verdicts_complete"] = len(verdicts)

@@ -313,6 +313,7 @@ async def verify_all_claims(
     system_cache_name: str,
     doc_cache_name: str,
     max_concurrent: int = MAX_CONCURRENT_VERIFICATIONS,
+    on_verdict=None,
 ) -> list[ClaimVerdict]:
     """对所有声明并行执行证据核验。
 
@@ -322,15 +323,34 @@ async def verify_all_claims(
         system_cache_name: 系统 context cache
         doc_cache_name: 文档 context cache
         max_concurrent: 最大并发数
+        on_verdict: optional callback(done_count, total, verdict) invoked
+                    each time a claim's verdict is ready. Used by the
+                    HTTP sidecar to publish live progress so the UI can
+                    show "已核验 7/25" instead of waiting for the whole
+                    batch to finish.
 
     Returns:
         List[ClaimVerdict]: 按输入顺序排列的裁决结果
     """
     semaphore = asyncio.Semaphore(max_concurrent)
-    tasks = [
-        verify_single_claim(c, store_name, system_cache_name, doc_cache_name, semaphore)
-        for c in claims
-    ]
+    completed = 0
+    total = len(claims)
+    lock = asyncio.Lock()
+
+    async def wrapped(c):
+        nonlocal completed
+        verdict = await verify_single_claim(c, store_name, system_cache_name, doc_cache_name, semaphore)
+        if on_verdict:
+            async with lock:
+                completed += 1
+                try:
+                    on_verdict(completed, total, verdict)
+                except Exception:
+                    # Never let a faulty progress callback break verification.
+                    logger.exception("on_verdict callback raised")
+        return verdict
+
+    tasks = [wrapped(c) for c in claims]
     return await asyncio.gather(*tasks)
 
 
