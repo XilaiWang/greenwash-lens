@@ -25,6 +25,7 @@ const { createAnalysisJob, getJob } = require("./analysis-jobs");
 const { readSettings, writeSettings } = require("./services/settings-service");
 const { extractFromBuffer } = require("./pdf-extractor");
 const { deepAnalyze } = require("./services/deep-analysis-service");
+const { analyze: orchestrateV2, VALID_MODES: V2_MODES } = require("./layers/orchestrator");
 const { MAX_TEXT_LENGTH } = require("./pdf-cleaner");
 
 const EVIDENCE_SIDECAR_URL = "http://127.0.0.1:5176";
@@ -137,6 +138,27 @@ async function handleApi(request, response, url) {
       save: body.save !== false,
     });
 
+    sendJson(response, 200, payload);
+    return true;
+  }
+
+  // v2 multi-layer pipeline (L0 + L1 + optional L3).
+  // Independent of v1 /analyze — kept side-by-side during the Stage 1
+  // refactor so existing UI never breaks. See src/layers/orchestrator.js.
+  if (request.method === "POST" && pathname === "/v2/analyze") {
+    const body = await readJson(request);
+    if (typeof body?.text !== "string" || !body.text.trim()) {
+      const error = new Error("text 必须是非空字符串。");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (body.text.length > MAX_TEXT_LENGTH) {
+      const error = new Error(`text 长度不能超过 ${MAX_TEXT_LENGTH} 个字符。`);
+      error.statusCode = 400;
+      throw error;
+    }
+    const mode = V2_MODES.includes(body.mode) ? body.mode : "fast";
+    const payload = await orchestrateV2(body.text, { mode });
     sendJson(response, 200, payload);
     return true;
   }
