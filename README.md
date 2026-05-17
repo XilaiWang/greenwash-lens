@@ -33,6 +33,42 @@ curl -X POST http://127.0.0.1:5173/api/v2/analyze \
 
 v1 `/api/analyze` 保留不动，前端继续工作。等 Stage 2-3 完成后再做 UI 迁移。
 
+## 功能展示 / Feature Screenshots
+
+### 主界面 — 文本与 PDF 输入
+![主界面](docs/screenshots/01-home-empty.png)
+*支持粘贴绿色声明文本或上传 PDF 报告，自动识别语言、场景与行业分类*
+
+### 分析结果 — 风险评分与概要
+![分析结果](docs/screenshots/02-analysis-results.png)
+*AI 驱动的 Greenwashing 风险概率评分（0–100%），包含模糊表述、证据缺口、夸大风险、承诺落差四个维度*
+
+### 风险维度分解与证据标记
+![风险分解](docs/screenshots/03-breakdown-evidence.png)
+*四个风险维度的量化分解 + 五项证据指标（量化指标、时间边界、外部证明、行动证据、范围/基准）*
+
+### 三层情绪检测
+![情绪检测](docs/screenshots/04-emotion-detection.png)
+*规则引擎 + NLP + LLM 三层情绪融合检测，一致性校验，分歧预警*
+
+### LLM 增强判断
+![LLM增强](docs/screenshots/05-llm-enhancement.png)
+*外部模型（支持 OpenAI / Claude / Gemini / DeepSeek）提供模糊表述诊断、逻辑矛盾检测与合规改写建议*
+
+### 结果自检
+![结果自检](docs/screenshots/06-verification.png)
+*自动校验分析结果的一致性，包括自动识别可信度、外部模型幻觉检测等*
+
+### 检测历史与趋势
+![历史记录](docs/screenshots/07-history.png)
+*本地 SQLite 存储所有分析历史，支持风险评分趋势图与移动平均线*
+
+### 暗色模式
+![暗色模式](docs/screenshots/08-dark-home.png)  ![暗色模式结果](docs/screenshots/09-dark-results.png)
+*支持亮色/暗色模式一键切换，自动跟随系统偏好*
+
+---
+
 ## 开发运行
 
 先安装依赖，然后启动开发服务：
