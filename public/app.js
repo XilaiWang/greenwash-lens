@@ -71,6 +71,7 @@ const docViewer = document.querySelector("#docViewer");
 const docViewerBody = document.querySelector("#docViewerBody");
 const docViewerClose = document.querySelector("#docViewerClose");
 const docViewerOpen = document.querySelector("#docViewerOpen");
+const readerRow = document.querySelector("#readerRow");
 
 const values = {
   vagueness: document.querySelector("#vaguenessValue"),
@@ -2167,7 +2168,7 @@ function renderDocument(doc) {
   currentDocument = doc;
 
   if (!doc || !doc.length) {
-    if (docViewerOpen) docViewerOpen.hidden = true;
+    if (readerRow) readerRow.hidden = true;
     return;
   }
 
@@ -2209,7 +2210,7 @@ function renderDocument(doc) {
     docViewerBody.append(pageEl);
   });
 
-  if (docViewerOpen) docViewerOpen.hidden = false;
+  if (readerRow) readerRow.hidden = false;
 }
 
 function applyHighlights(signals) {
@@ -2295,8 +2296,7 @@ docViewerClose.addEventListener("click", () => {
 });
 
 if (docViewerOpen) {
-  docViewerOpen.addEventListener("click", (e) => {
-    e.stopPropagation();
+  docViewerOpen.addEventListener("click", () => {
     if (docViewer) {
       docViewer.hidden = false;
       docViewerBody?.scrollTo(0, 0);
@@ -3039,7 +3039,7 @@ clearButton.addEventListener("click", () => {
   setClassificationStatus("添加内容后自动判断场景和行业");
   exportButton.disabled = true;
   if (docViewer) docViewer.hidden = true;
-  if (docViewerOpen) docViewerOpen.hidden = true;
+  if (readerRow) readerRow.hidden = true;
   if (docViewerBody) docViewerBody.innerHTML = "";
   document.querySelector(".result-panel").classList.remove("analyzing");
   showWelcome();
