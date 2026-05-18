@@ -301,10 +301,6 @@
   background: var(--surface-strong);
 }
 
-[data-theme="dark"] .doc-viewer-body {
-  color: var(--ink);
-}
-
 [data-theme="dark"] .doc-table {
   background: var(--surface-strong);
 }
@@ -449,9 +445,7 @@ h1 {
 }
 
 .workspace.has-document {
-  grid-template-areas:
-    "input doc"
-    "input result";
+  grid-template-areas: "input result";
 }
 
 .input-panel,
@@ -1846,105 +1840,149 @@ button:disabled {
   background: #fbfcfc;
 }
 
-.doc-viewer {
-  grid-area: doc;
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  max-height: 420px;
-  overflow: hidden;
+/* ── Document reader overlay ── */
+.doc-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
   display: flex;
   flex-direction: column;
-  align-self: start;
+  background: #525659;
 }
 
-.doc-viewer[hidden] {
+.doc-viewer-overlay[hidden] {
   display: none;
 }
 
-.doc-viewer-header {
+.doc-viewer-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 10px 20px;
+  background: #3c3f41;
+  border-bottom: 1px solid #2a2c2e;
   flex-shrink: 0;
 }
 
-.doc-viewer-header .metric-label {
-  margin: 0;
+.doc-viewer-toolbar .metric-label {
+  color: #d0d0d0;
 }
 
-.doc-viewer-body {
-  padding: 18px;
-  overflow: auto;
-  line-height: 1.72;
-  color: #2b3735;
-  font-size: 14px;
-  white-space: pre-wrap;
+.doc-viewer-close-btn {
+  color: #c8c8c8 !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.doc-viewer-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+.doc-viewer-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 36px 24px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* Individual A4-style page */
+.doc-page {
+  background: #fff;
+  width: 760px;
+  max-width: calc(100vw - 48px);
+  padding: 64px 72px 52px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  position: relative;
+}
+
+.doc-page-number {
+  text-align: center;
+  margin: 36px 0 0;
+  font-size: 11px;
+  color: #bbb;
+  letter-spacing: 0.06em;
 }
 
 .doc-para {
-  margin-bottom: 14px;
+  margin-bottom: 1.1em;
+  line-height: 1.82;
+  font-size: 14.5px;
+  color: #1c1c1c;
   overflow-wrap: anywhere;
 }
 
 .doc-table {
   max-width: 100%;
-  margin: 8px 0 16px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #f8faf9;
+  margin: 12px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid #e2e2e2;
+  border-radius: 4px;
+  background: #f8f9fa;
   overflow-x: auto;
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre;
+  font-size: 12.5px;
+  line-height: 1.5;
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
 }
 
 .doc-table pre {
   min-width: max-content;
+  margin: 0;
+  white-space: pre;
 }
 
 .doc-table-label {
   display: inline-block;
   margin-bottom: 6px;
-  color: var(--muted);
+  color: #888;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
+/* "open reader" button inside the upload zone */
+.doc-open-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+  text-align: center;
+}
+
 mark.green-signal {
-  background: rgba(31, 138, 91, 0.2);
-  color: #14613f;
+  background: #9aedc3;
+  color: #0b4a28;
   border-radius: 2px;
-  padding: 0 1px;
+  padding: 0 2px;
+  font-weight: 600;
 }
 
 mark.vague-signal {
-  background: rgba(189, 122, 19, 0.2);
-  color: #9a6411;
+  background: #ffd160;
+  color: #5e3800;
   border-radius: 2px;
-  padding: 0 1px;
+  padding: 0 2px;
+  font-weight: 600;
 }
 
 mark.absolute-signal {
-  background: rgba(189, 63, 50, 0.18);
-  color: #8e2e25;
+  background: #ffaaaa;
+  color: #7a0d0d;
   border-radius: 2px;
-  padding: 0 1px;
+  padding: 0 2px;
+  font-weight: 600;
 }
 
 mark.future-signal {
-  background: rgba(47, 93, 140, 0.18);
-  color: #2f5d8c;
+  background: #a8ccff;
+  color: #0c2a5e;
   border-radius: 2px;
-  padding: 0 1px;
+  padding: 0 2px;
+  font-weight: 600;
 }
 
 /* Inner cards (no longer need order: since they live inside tab panels) */

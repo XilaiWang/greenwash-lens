@@ -91,6 +91,7 @@
               <span class="pdf-upload-hint">提取文本后会自动识别场景和行业</span>
               <span class="pdf-upload-status" id="pdfUploadStatus" hidden></span>
               <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" hidden />
+              <button id="docViewerOpen" class="doc-open-btn ghost-button" type="button" hidden>📖 在阅读器中查看</button>
             </div>
 
             <div class="text-field">
@@ -124,14 +125,6 @@
             </button>
           </div>
         </form>
-
-        <section class="doc-viewer" id="docViewer" hidden aria-label="文档阅读器">
-          <div class="doc-viewer-header">
-            <p class="metric-label">文档阅读器</p>
-            <button class="ghost-button" id="docViewerClose" type="button">收起</button>
-          </div>
-          <div class="doc-viewer-body" id="docViewerBody"></div>
-        </section>
 
         <section class="result-panel" aria-live="polite" aria-label="检测结果" data-collapsible data-card-id="result" data-card-title="检测结果">
           <div class="welcome-panel" id="welcomePanel">
@@ -538,6 +531,15 @@
         </div>
       </div>
     </aside>
+
+    <!-- Document reader overlay -->
+    <div class="doc-viewer-overlay" id="docViewer" hidden role="dialog" aria-modal="true" aria-label="文档阅读器">
+      <div class="doc-viewer-toolbar">
+        <p class="metric-label" style="margin:0">文档阅读器</p>
+        <button class="ghost-button doc-viewer-close-btn" id="docViewerClose" type="button">✕ 关闭</button>
+      </div>
+      <div class="doc-viewer-scroll" id="docViewerBody"></div>
+    </div>
 
     <script src="./engine-core.js?v=0.9.0-ui-fix.9"></script>
     <script src="./local-engine.js?v=0.9.0-ui-fix.9"></script>

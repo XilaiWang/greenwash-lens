@@ -70,6 +70,7 @@ const pdfUploadStatus = document.querySelector("#pdfUploadStatus");
 const docViewer = document.querySelector("#docViewer");
 const docViewerBody = document.querySelector("#docViewerBody");
 const docViewerClose = document.querySelector("#docViewerClose");
+const docViewerOpen = document.querySelector("#docViewerOpen");
 
 const values = {
   vagueness: document.querySelector("#vaguenessValue"),
@@ -2138,40 +2139,77 @@ async function handlePdfFile(file) {
 
 let currentDocument = null;
 
+const READER_CHARS_PER_PAGE = 2200;
+
+function paginateBlocks(doc) {
+  const pages = [];
+  let page = [];
+  let chars = 0;
+  for (const block of doc) {
+    if (block.hiddenByDefault) continue;
+    const len = block.type === "paragraph"
+      ? block.text.length
+      : (block.rows || []).join("").length;
+    if (chars > 0 && chars + len > READER_CHARS_PER_PAGE) {
+      pages.push(page);
+      page = [];
+      chars = 0;
+    }
+    page.push(block);
+    chars += len;
+  }
+  if (page.length) pages.push(page);
+  return pages.length ? pages : [[]];
+}
+
 function renderDocument(doc) {
-  if (!docViewer || !docViewerBody) return;
+  if (!docViewerBody) return;
   currentDocument = doc;
 
   if (!doc || !doc.length) {
-    docViewer.hidden = true;
-    workspace?.classList.remove("has-document");
+    if (docViewerOpen) docViewerOpen.hidden = true;
     return;
   }
 
-  docViewer.hidden = false;
-  workspace?.classList.add("has-document");
   docViewerBody.innerHTML = "";
+  const pages = paginateBlocks(doc);
+  const total = pages.length;
 
-  doc.forEach((block) => {
-    if (block.type === "paragraph") {
-      const p = document.createElement("p");
-      p.className = "doc-para";
-      p.textContent = block.text;
-      docViewerBody.append(p);
-    } else if (block.type === "table") {
-      const wrapper = document.createElement("div");
-      wrapper.className = "doc-table";
-      const label = document.createElement("span");
-      label.className = "doc-table-label";
-      label.textContent = "表格内容";
-      wrapper.append(label);
-      const pre = document.createElement("pre");
-      pre.style.cssText = "margin:0;white-space:pre;font:inherit;";
-      pre.textContent = block.rows.join("\n");
-      wrapper.append(pre);
-      docViewerBody.append(wrapper);
+  pages.forEach((blocks, i) => {
+    const pageEl = document.createElement("div");
+    pageEl.className = "doc-page";
+
+    blocks.forEach((block) => {
+      if (block.type === "paragraph") {
+        const p = document.createElement("p");
+        p.className = "doc-para";
+        p.textContent = block.text;
+        pageEl.append(p);
+      } else if (block.type === "table") {
+        const wrapper = document.createElement("div");
+        wrapper.className = "doc-table";
+        const label = document.createElement("span");
+        label.className = "doc-table-label";
+        label.textContent = "表格内容";
+        wrapper.append(label);
+        const pre = document.createElement("pre");
+        pre.textContent = block.rows.join("\n");
+        wrapper.append(pre);
+        pageEl.append(wrapper);
+      }
+    });
+
+    if (total > 1) {
+      const num = document.createElement("p");
+      num.className = "doc-page-number";
+      num.textContent = `${i + 1} / ${total}`;
+      pageEl.append(num);
     }
+
+    docViewerBody.append(pageEl);
   });
+
+  if (docViewerOpen) docViewerOpen.hidden = false;
 }
 
 function applyHighlights(signals) {
@@ -2254,9 +2292,22 @@ function applyHighlights(signals) {
 
 docViewerClose.addEventListener("click", () => {
   if (docViewer) docViewer.hidden = true;
-  currentDocument = null;
-  workspace?.classList.remove("has-document");
-  if (docViewerBody) docViewerBody.innerHTML = "";
+});
+
+if (docViewerOpen) {
+  docViewerOpen.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (docViewer) {
+      docViewer.hidden = false;
+      docViewerBody?.scrollTo(0, 0);
+    }
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && docViewer && !docViewer.hidden) {
+    docViewer.hidden = true;
+  }
 });
 
 function updatePdfUploadVisibility() {
@@ -2988,7 +3039,7 @@ clearButton.addEventListener("click", () => {
   setClassificationStatus("添加内容后自动判断场景和行业");
   exportButton.disabled = true;
   if (docViewer) docViewer.hidden = true;
-  workspace?.classList.remove("has-document");
+  if (docViewerOpen) docViewerOpen.hidden = true;
   if (docViewerBody) docViewerBody.innerHTML = "";
   document.querySelector(".result-panel").classList.remove("analyzing");
   showWelcome();
