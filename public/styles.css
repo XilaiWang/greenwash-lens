@@ -1840,17 +1840,18 @@ button:disabled {
   background: #fbfcfc;
 }
 
-/* ── Document reader overlay ── */
-.doc-viewer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
+/* ── Document reader inline panel ── */
+.doc-viewer-panel {
   display: flex;
   flex-direction: column;
   background: #525659;
+  border-radius: var(--radius);
+  overflow: hidden;
+  height: 560px;
+  margin-bottom: 20px;
 }
 
-.doc-viewer-overlay[hidden] {
+.doc-viewer-panel[hidden] {
   display: none;
 }
 
@@ -1944,17 +1945,6 @@ button:disabled {
   text-transform: uppercase;
 }
 
-/* "open reader" row — sits between input-split and button-row */
-.reader-row {
-  display: flex;
-  padding: 0 2px;
-}
-.reader-row[hidden] { display: none; }
-.reader-btn {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-}
 
 mark.green-signal {
   background: #9aedc3;

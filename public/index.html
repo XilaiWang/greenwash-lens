@@ -105,10 +105,6 @@
             </div>
           </div>
 
-          <div id="readerRow" class="reader-row" hidden>
-            <button id="docViewerOpen" class="secondary-button reader-btn" type="button">📖 在阅读器中查看</button>
-          </div>
-
           <div class="button-row">
             <button class="primary-button" type="submit">开始分析</button>
             <select id="analysisMode" class="mode-select" title="分析深度">
@@ -420,6 +416,14 @@
         </section>
       </section>
 
+      <div class="doc-viewer-panel" id="docViewer" hidden aria-label="文档阅读器">
+        <div class="doc-viewer-toolbar">
+          <p class="metric-label" style="margin:0">文档阅读器</p>
+          <button class="ghost-button doc-viewer-close-btn" id="docViewerClose" type="button">收起</button>
+        </div>
+        <div class="doc-viewer-scroll" id="docViewerBody"></div>
+      </div>
+
       <section class="history-panel" aria-label="最近分析" data-collapsible data-card-id="history" data-card-title="检测历史">
         <div class="panel-heading">
           <div>
@@ -534,15 +538,6 @@
         </div>
       </div>
     </aside>
-
-    <!-- Document reader overlay -->
-    <div class="doc-viewer-overlay" id="docViewer" hidden role="dialog" aria-modal="true" aria-label="文档阅读器">
-      <div class="doc-viewer-toolbar">
-        <p class="metric-label" style="margin:0">文档阅读器</p>
-        <button class="ghost-button doc-viewer-close-btn" id="docViewerClose" type="button">✕ 关闭</button>
-      </div>
-      <div class="doc-viewer-scroll" id="docViewerBody"></div>
-    </div>
 
     <script src="./engine-core.js?v=0.9.0-ui-fix.9"></script>
     <script src="./local-engine.js?v=0.9.0-ui-fix.9"></script>
