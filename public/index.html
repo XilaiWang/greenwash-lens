@@ -107,15 +107,21 @@
 
           <div class="button-row">
             <button class="primary-button" type="submit">开始分析</button>
-            <button class="secondary-button deep-button" id="deepAnalyzeButton" type="button" disabled title="需配置外部模型后启用">
-              深度分析
-              <span class="info-tooltip" tabindex="0" aria-label="深度分析说明" title="配置 LLM Provider 后启用 M3/M4/M5 深度分析（模糊度、包装强度、承诺-行动落差），输出 TGRI 综合风险指数。">ⓘ</span>
-            </button>
+            <select id="analysisMode" class="mode-select" title="分析深度">
+              <option value="auto" selected>自动</option>
+              <option value="fast">快速（关键词）</option>
+              <option value="standard">标准（+LLM 结构化）</option>
+              <option value="comprehensive">全面（+认证+七宗罪+GRI）</option>
+            </select>
           </div>
           <div class="button-row-secondary">
             <button class="secondary-button" id="sampleButton" type="button">示例</button>
             <button class="ghost-button" id="clearButton" type="button">清空</button>
             <button class="ghost-button" id="exportButton" type="button" disabled>导出 JSON</button>
+            <button class="secondary-button deep-button" id="deepAnalyzeButton" type="button" disabled title="需配置外部模型后启用">
+              深度分析
+              <span class="info-tooltip" tabindex="0" aria-label="深度分析说明" title="M3/M4/M5 深度分析（模糊度、包装强度、承诺-行动落差），输出 TGRI 综合风险指数。">ⓘ</span>
+            </button>
           </div>
         </form>
 
@@ -242,9 +248,27 @@
               <div class="skeleton-chip"></div>
               <div class="skeleton-chip"></div>
             </div>
+
+            <section class="v2-overview" id="v2Overview" hidden>
+              <div class="v2-sins-row" id="v2SinsRow"></div>
+              <div class="v2-top-concerns" id="v2TopConcerns">
+                <p class="metric-label">主要风险点</p>
+                <ul id="v2ConcernsList" class="factor-list"></ul>
+              </div>
+            </section>
           </div>
 
           <div class="result-tab-panel" role="tabpanel" data-tab="details">
+            <section class="v2-claims-section" id="v2ClaimsSection" hidden>
+              <p class="metric-label">逐条声明分析（<span id="v2ClaimsCount">0</span>）</p>
+              <div id="v2ClaimsList" class="v2-claims-list"></div>
+            </section>
+
+            <section class="v2-consistency-section" id="v2ConsistencySection" hidden>
+              <p class="metric-label">一致性分析</p>
+              <div id="v2ContradictionsList"></div>
+            </section>
+
             <div class="skeleton-group findings-skeleton" style="grid-template-columns:1fr 1fr;gap:14px;">
               <div class="skeleton-line"></div>
               <div class="skeleton-line"></div>
@@ -398,93 +422,6 @@
             </section>
           </div>
         </section>
-      </section>
-
-      <section class="evidence-panel" id="evidencePanel" aria-label="证据核验" data-collapsible data-card-id="evidence" data-card-title="证据核验">
-        <div class="panel-heading">
-          <div>
-            <p class="metric-label">证据核验</p>
-            <h2>ESG 报告自核验</h2>
-          </div>
-          <span class="evidence-badge" id="evidenceStatusBadge">引擎未启动</span>
-        </div>
-
-        <div class="evidence-body" id="evidenceBody">
-          <div class="evidence-upload-zone" id="evidenceUploadZone" role="button" tabindex="0" aria-label="上传 ESG 报告 PDF">
-            <span class="evidence-upload-icon" aria-hidden="true">&#128196;</span>
-            <p class="evidence-upload-label">拖拽 ESG 报告 PDF 到此处，或<span class="evidence-upload-link">点击选择文件</span></p>
-            <p class="evidence-upload-hint">支持中英文 ESG/CSR/可持续发展报告，最大 50MB</p>
-            <input type="file" id="evidencePdfInput" accept=".pdf,application/pdf" hidden />
-          </div>
-
-          <div class="evidence-meta-row">
-            <div class="field-row">
-              <label for="evidenceCompany">公司名称</label>
-              <input type="text" id="evidenceCompany" placeholder="输入公司名称" />
-            </div>
-            <div class="field-row">
-              <label for="evidenceYear">报告年份</label>
-              <input type="number" id="evidenceYear" value="2024" min="2000" max="2030" />
-            </div>
-            <div class="field-row">
-              <label for="evidenceMode">分析模式</label>
-              <select id="evidenceMode">
-                <option value="realtime" selected>实时（~60秒）</option>
-                <option value="batch">批量（~15分钟，成本减半）</option>
-              </select>
-            </div>
-          </div>
-
-          <button class="primary-button" id="evidenceStartButton" type="button" disabled>开始证据核验</button>
-
-          <div class="evidence-progress" id="evidenceProgress" hidden>
-            <div class="evidence-progress-header">
-              <strong id="evidenceProgressLabel">上传中</strong>
-              <span class="evidence-progress-pct" id="evidenceProgressPct">0%</span>
-            </div>
-            <div class="progress-track">
-              <div class="progress-fill" id="evidenceProgressFill"></div>
-            </div>
-            <p id="evidenceProgressMsg"></p>
-          </div>
-
-          <div class="evidence-result" id="evidenceResult" hidden>
-            <div class="evidence-dual-score">
-              <div class="evidence-score-card score-text">
-                <p class="metric-label">语言风险</p>
-                <strong id="evidenceTextRisk">--</strong>
-                <span class="evidence-sub" id="evidenceTextRiskLabel">待分析</span>
-              </div>
-              <div class="evidence-score-card score-evidence">
-                <p class="metric-label">证据风险</p>
-                <strong id="evidenceEvidenceRisk">--</strong>
-                <span class="evidence-sub" id="evidenceEvidenceRiskLabel">待分析</span>
-              </div>
-              <div class="evidence-score-card score-gri">
-                <p class="metric-label">综合 GRI</p>
-                <strong id="evidenceGRI">--</strong>
-                <span class="evidence-sub" id="evidenceGRILabel">待分析</span>
-              </div>
-            </div>
-
-            <div class="evidence-verdict-dist" id="evidenceVerdictDist">
-              <span class="verdict-chip supported" id="evSupported">✅ 支持: 0</span>
-              <span class="verdict-chip partial" id="evPartial">⚠️ 部分支持: 0</span>
-              <span class="verdict-chip contradicted" id="evContradicted">❌ 矛盾: 0</span>
-              <span class="verdict-chip insufficient" id="evInsufficient">❓ 证据不足: 0</span>
-            </div>
-
-            <div class="evidence-findings" id="evidenceFindings">
-              <p class="metric-label">关键发现</p>
-              <ul id="evidenceFindingsList" class="factor-list"></ul>
-            </div>
-
-            <div class="evidence-claims" id="evidenceClaims">
-              <p class="metric-label">声明逐条分析 (<span id="evidenceClaimsCount">0</span>)</p>
-              <div id="evidenceClaimsList"></div>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section class="history-panel" aria-label="最近分析" data-collapsible data-card-id="history" data-card-title="检测历史">
