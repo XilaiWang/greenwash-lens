@@ -8,6 +8,15 @@ const MERGE_START = /^[\p{Lowercase_Letter}\p{Ideographic}0-9\-—–]/u;
 const WORD_CHAR = /[\p{Lowercase_Letter}\p{Ideographic}0-9]/u;
 const DASHES = new Set(["-", "—", "–"]);
 
+function repairLetterSpacing(text) {
+  text = text.replace(/(?<=^|\s)(?:[a-zA-Z] ){2,}[a-zA-Z](?=\s|$|[^a-zA-Z])/g,
+    (m) => m.replace(/ /g, ""));
+  text = text.replace(/([一-鿿㐀-䶿]) (?=[一-鿿㐀-䶿])/g, "$1");
+  return text;
+}
+
+const REFERENCE_INDEX_RE = /\bread more on pages? \d+/i;
+
 function cleanPdfText(rawText) {
   if (typeof rawText !== "string" || !rawText.trim()) {
     return { cleanedText: "", document: [], warnings: [], stats: {} };
@@ -17,6 +26,7 @@ function cleanPdfText(rawText) {
   const warnings = [];
 
   let text = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  text = repairLetterSpacing(text);
   const lines = text.split("\n");
 
   const docBlocks = [];
@@ -50,6 +60,13 @@ function cleanPdfText(rawText) {
   }
   flushTable();
   flushPara();
+
+  for (const block of docBlocks) {
+    if (block.type === "paragraph" && REFERENCE_INDEX_RE.test(block.text)) {
+      block.hiddenByDefault = true;
+      block.hiddenReason = "reference_index";
+    }
+  }
 
   const document = docBlocks;
 

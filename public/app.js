@@ -105,9 +105,11 @@ let classificationSelectionMode = {
 };
 let smartClassificationState = null;
 let applyingSmartClassification = false;
-// 当 /analyze-jobs 端点失败时切换到同步 /analyze 路径作为降级
 let preferLegacyAnalyze = false;
+let preferV1 = false;
 let llmAvailable = false;
+let lastV2Payload = null;
+let pdfSourceMode = false;
 let nlpServiceAvailable = false;
 const apiBase = resolveApiBase();
 const localEngine = window.GreenwashLocal || null;
@@ -124,16 +126,27 @@ function apiFetch(url, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
+function resolveAnalysisMode() {
+  const modeSelect = document.getElementById("analysisMode");
+  const explicit = modeSelect?.value || "auto";
+  if (explicit !== "auto") return explicit;
+  if (pdfSourceMode && llmAvailable) return "comprehensive";
+  if (pdfSourceMode) return "standard";
+  return "fast";
+}
+
 async function analyzeText() {
   const text = textArea.value.trim();
 
   if (!text) {
     latestAnalysis = null;
+    lastV2Payload = null;
     exportButton.disabled = true;
     clearTimeout(classifyTimer);
     lastClassifiedText = "";
     setClassificationStatus("添加内容后自动判断场景和行业");
     renderResult(createEmptyResult());
+    hideV2Sections();
     renderLlm(null, null);
     renderLlmDetails(null);
     renderVerification(null);
@@ -150,8 +163,10 @@ async function analyzeText() {
   currentJobId = null;
   currentJobStartedAt = Date.now();
   latestAnalysis = null;
+  lastV2Payload = null;
   exportButton.disabled = true;
   setBusy(true);
+  hideV2Sections();
   renderProgress({
     status: "creating",
     stage: "creating",
@@ -163,44 +178,130 @@ async function analyzeText() {
   try {
     const requestPayload = buildAnalysisRequestPayload(text);
 
-    if (preferLegacyAnalyze) {
-      await runLegacyAnalysis(requestPayload);
+    if (preferV1) {
+      await runV1Analysis(requestPayload);
       return;
     }
 
-    const response = await apiFetch(apiUrl("/api/v1/analyze-jobs"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestPayload),
-    });
-    const job = await response.json().catch(() => null);
+    const mode = resolveAnalysisMode();
+    const stopTicker = startV2ProgressTicker(mode);
 
-    if (!response.ok) {
-      const errorMessage = job?.error || "分析任务创建失败";
+    try {
+      const response = await apiFetch(apiUrl("/api/v2/analyze"), {
+        method: "POST",
+        body: JSON.stringify({ text, mode }),
+      });
+      const payload = await response.json().catch(() => null);
 
-      if (response.status === 404 || /接口不存在|not found/i.test(errorMessage)) {
-        preferLegacyAnalyze = true;
-        await runLegacyAnalysis(requestPayload);
-        return;
+      if (!response.ok) {
+        if (response.status === 404) {
+          preferV1 = true;
+          stopTicker();
+          await runV1Analysis(requestPayload);
+          return;
+        }
+        throw new Error(payload?.error || "v2 分析失败");
       }
 
-      throw new Error(errorMessage);
+      stopTicker();
+      lastV2Payload = payload;
+      latestAnalysis = payload;
+      exportButton.disabled = false;
+      renderV2Result(payload);
+      renderProgress({
+        status: "completed",
+        stage: "completed",
+        progress: 100,
+        elapsedMs: Date.now() - currentJobStartedAt,
+        message: `v2 多层分析完成（${payload.mode}模式，${payload.meta?.stages_run?.join("→") || ""}）`,
+      });
+      engineStatus.textContent = `应用已连接 · ${payload.meta?.engineVersion || "v2"}`;
+      loadHistory();
+    } catch (err) {
+      stopTicker();
+      throw err;
     }
-
-    currentJobId = job.id;
-    renderProgress(job);
-    await pollJob(job.id, requestPayload);
   } catch (error) {
+    if (!preferV1) {
+      try {
+        await runV1Analysis(buildAnalysisRequestPayload(text));
+        return;
+      } catch {}
+    }
     if (localEngine) {
-      await runLocalAnalysis(requestPayload, error.message || "后端不可用");
+      await runLocalAnalysis(buildAnalysisRequestPayload(text), error.message || "后端不可用");
     } else {
       failAnalysis(error.message || "分析失败");
     }
   } finally {
     setBusy(false);
   }
+}
+
+async function runV1Analysis(requestPayload) {
+  if (preferLegacyAnalyze) {
+    await runLegacyAnalysis(requestPayload);
+    return;
+  }
+  try {
+    const response = await apiFetch(apiUrl("/api/v1/analyze-jobs"), {
+      method: "POST",
+      body: JSON.stringify(requestPayload),
+    });
+    const job = await response.json().catch(() => null);
+    if (!response.ok) {
+      if (response.status === 404 || /接口不存在|not found/i.test(job?.error || "")) {
+        preferLegacyAnalyze = true;
+        await runLegacyAnalysis(requestPayload);
+        return;
+      }
+      throw new Error(job?.error || "分析任务创建失败");
+    }
+    currentJobId = job.id;
+    renderProgress(job);
+    await pollJob(job.id, requestPayload);
+  } catch (err) {
+    await runLegacyAnalysis(requestPayload);
+  }
+}
+
+function startV2ProgressTicker(mode) {
+  const modeStages = {
+    fast: [
+      { after: 0, stage: "L0", progress: 20, message: "L0 原子声明拆分" },
+      { after: 400, stage: "L1", progress: 60, message: "L1 特征提取" },
+    ],
+    standard: [
+      { after: 0, stage: "L0", progress: 10, message: "L0 原子声明拆分" },
+      { after: 500, stage: "L1", progress: 25, message: "L1 特征提取" },
+      { after: 1000, stage: "L3", progress: 50, message: "L3 LLM 声明结构化" },
+    ],
+    comprehensive: [
+      { after: 0, stage: "L0", progress: 5, message: "L0 原子声明拆分" },
+      { after: 500, stage: "L1", progress: 12, message: "L1 特征提取" },
+      { after: 1000, stage: "L3", progress: 30, message: "L3 LLM 声明结构化" },
+      { after: 5000, stage: "L5a", progress: 55, message: "L5a 认证检测" },
+      { after: 6000, stage: "L6", progress: 70, message: "L6 一致性 & 七宗罪" },
+      { after: 7000, stage: "L7", progress: 85, message: "L7 GRI 聚合" },
+    ],
+  };
+  const stages = modeStages[mode] || modeStages.fast;
+  const interval = setInterval(() => {
+    const elapsed = Date.now() - currentJobStartedAt;
+    const stage = stages.reduce(
+      (sel, c) => (elapsed >= c.after ? c : sel),
+      stages[0],
+    );
+    renderProgress({
+      status: "running",
+      stage: stage.stage,
+      progress: stage.progress,
+      message: stage.message,
+      elapsedMs: elapsed,
+      stalled: elapsed > 30000,
+    });
+  }, 400);
+  return () => clearInterval(interval);
 }
 
 async function pollJob(jobId, requestPayload) {
@@ -794,6 +895,230 @@ function renderResult(result) {
   renderList(riskFactors, result.factors);
   renderList(matchedSignals, result.signals);
   renderEmotionAnalysis(result.emotionAnalysis || createEmptyEmotionAnalysis());
+}
+
+function hideV2Sections() {
+  const ids = ["v2Overview", "v2ClaimsSection", "v2ConsistencySection"];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  });
+}
+
+function renderV2Result(payload) {
+  hideWelcome();
+  const scoring = payload.scoring;
+  const perClaim = payload.perClaim || [];
+  const consistency = payload.consistency;
+  const doc = payload.document || {};
+
+  if (scoring) {
+    const gri = Math.round(scoring.document?.gri || 0);
+    const riskLevel2 = scoring.document?.risk_level || "待分析";
+    const colorMap = { "低风险": "var(--green)", "中低风险": "var(--teal)", "中高风险": "var(--amber)", "高风险": "var(--red)" };
+    const toneMap = { "低风险": "green", "中低风险": "teal", "中高风险": "amber", "高风险": "red" };
+
+    riskGauge.style.setProperty("--score", gri);
+    riskGauge.style.setProperty("--gauge-color", colorMap[riskLevel2] || "var(--muted)");
+    animateValue(riskScore, parseInt(riskScore.textContent) || 0, gri, 500, (v) => `${v}`);
+    riskLevel.textContent = riskLevel2;
+    summaryText.textContent = `GRI ${gri} · ${perClaim.length} 条声明 · ${payload.mode}模式`;
+
+    const strip = document.getElementById("classificationStrip");
+    if (strip) {
+      strip.innerHTML = `
+        <span>语言：${doc.language || "?"}</span>
+        <span>声明：${doc.claim_count || 0} 条</span>
+        <span>层级：${(payload.meta?.stages_run || []).join("→")}</span>
+      `;
+    }
+    if (claimProbability) claimProbability.textContent = `${gri}`;
+    if (confidenceScore) confidenceScore.textContent = `${perClaim.length} 条`;
+    if (analysisNote) {
+      analysisNote.textContent = scoring.document?.risk_level
+        ? `综合绿色声明风险指数（GRI）为 ${gri}，风险等级${riskLevel2}。`
+        : "";
+    }
+
+    renderV2Breakdown(perClaim);
+    renderV2Sins(consistency);
+    renderV2TopConcerns(scoring.top_concerns || []);
+  } else {
+    riskGauge.style.setProperty("--score", 0);
+    riskLevel.textContent = `${payload.mode}模式`;
+    summaryText.textContent = `已完成 ${(payload.meta?.stages_run || []).join("→")} · ${perClaim.length} 条声明（仅快速模式无评分）`;
+    renderV2Breakdown(perClaim);
+  }
+
+  renderV2Claims(perClaim);
+  renderV2Consistency(consistency);
+
+  renderLlm(null, null);
+  renderLlmDetails(null);
+  renderVerification(null);
+}
+
+function renderV2Breakdown(perClaim) {
+  if (!perClaim.length) return;
+  let vague = 0, evidence = 0, overclaim = 0, promise = 0;
+  perClaim.forEach((c) => {
+    const f = c.features?.categories || {};
+    vague += (f.vague?.count || 0);
+    evidence += (f.proof?.count || 0) > 0 ? 0 : 1;
+    overclaim += (f.absolute?.count || 0);
+    promise += (f.future?.count || 0);
+  });
+  const scale = Math.max(1, perClaim.length);
+  updateBreakdown("vagueness", (vague / scale) * 25);
+  updateBreakdown("evidence", (evidence / scale) * 25);
+  updateBreakdown("overclaim", (overclaim / scale) * 25);
+  updateBreakdown("promise", (promise / scale) * 25);
+}
+
+function renderV2Sins(consistency) {
+  const row = document.getElementById("v2SinsRow");
+  const section = document.getElementById("v2Overview");
+  if (!row || !section) return;
+  row.innerHTML = "";
+
+  if (!consistency?.sins?.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  const sinLabels = {
+    hidden_tradeoff: "隐藏权衡",
+    no_proof: "无证据",
+    vagueness: "模糊",
+    false_labels: "伪标签",
+    irrelevance: "不相关",
+    lesser_of_evils: "两害取其轻",
+    fibbing: "虚假陈述",
+  };
+  const sinColors = {
+    high: "var(--red)",
+    medium: "var(--amber)",
+    low: "var(--teal)",
+  };
+  consistency.sins.forEach((sin) => {
+    const chip = document.createElement("span");
+    chip.className = "v2-sin-chip";
+    chip.style.borderColor = sinColors[sin.severity] || "var(--muted)";
+    chip.textContent = `${sinLabels[sin.sin] || sin.sin} (${sin.severity})`;
+    chip.title = `${sin.evidence_count || 0} 条证据`;
+    row.appendChild(chip);
+  });
+}
+
+function renderV2TopConcerns(concerns) {
+  const list = document.getElementById("v2ConcernsList");
+  const section = document.getElementById("v2Overview");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!concerns.length) return;
+  if (section) section.hidden = false;
+  concerns.slice(0, 5).forEach((c) => {
+    const li = document.createElement("li");
+    li.textContent = `${c.label || c.sin || ""}: ${c.description || ""} (${c.severity || ""})`;
+    list.appendChild(li);
+  });
+}
+
+function renderV2Claims(perClaim) {
+  const section = document.getElementById("v2ClaimsSection");
+  const list = document.getElementById("v2ClaimsList");
+  const count = document.getElementById("v2ClaimsCount");
+  if (!section || !list) return;
+  if (!perClaim.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  if (count) count.textContent = perClaim.length;
+  list.innerHTML = "";
+
+  perClaim.forEach((claim) => {
+    const card = document.createElement("div");
+    card.className = "v2-claim-card";
+
+    const header = document.createElement("div");
+    header.className = "v2-claim-header";
+
+    const typeTag = document.createElement("span");
+    typeTag.className = "v2-claim-type";
+    typeTag.textContent = claim.claim_type || "claim";
+    header.appendChild(typeTag);
+
+    if (claim.risk) {
+      const riskTag = document.createElement("span");
+      riskTag.className = "v2-claim-risk";
+      const riskVal = Math.round(claim.risk.combined || 0);
+      riskTag.textContent = `GRI ${riskVal}`;
+      riskTag.dataset.level = riskVal > 75 ? "high" : riskVal > 50 ? "medium" : "low";
+      header.appendChild(riskTag);
+    }
+
+    if (claim.certifications?.false_labels?.length) {
+      claim.certifications.false_labels.forEach((fl) => {
+        const flTag = document.createElement("span");
+        flTag.className = "v2-false-label";
+        flTag.textContent = fl.pattern || fl.type;
+        header.appendChild(flTag);
+      });
+    }
+
+    card.appendChild(header);
+
+    const textP = document.createElement("p");
+    textP.className = "v2-claim-text";
+    textP.textContent = claim.text;
+    card.appendChild(textP);
+
+    if (claim.structure) {
+      const details = document.createElement("details");
+      details.className = "v2-claim-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "结构化详情";
+      details.appendChild(summary);
+      const pre = document.createElement("div");
+      pre.className = "v2-claim-structure";
+      const s = claim.structure;
+      const lines = [];
+      if (s.metric?.name) lines.push(`指标: ${s.metric.name} ${s.metric.value || ""} ${s.metric.unit || ""}`);
+      if (s.time_horizon?.target_year) lines.push(`目标年份: ${s.time_horizon.target_year}`);
+      if (s.scope?.boundary) lines.push(`范围: ${s.scope.boundary}`);
+      if (s.baseline?.reference_year) lines.push(`基线: ${s.baseline.reference_year}`);
+      if (s.evidence_cited) lines.push(`引用证据: ${s.evidence_cited}`);
+      if (s.confidence) lines.push(`置信度: ${s.confidence}`);
+      pre.textContent = lines.join("\n") || "无结构化数据";
+      details.appendChild(pre);
+      card.appendChild(details);
+    }
+
+    list.appendChild(card);
+  });
+}
+
+function renderV2Consistency(consistency) {
+  const section = document.getElementById("v2ConsistencySection");
+  const list = document.getElementById("v2ContradictionsList");
+  if (!section || !list) return;
+  if (!consistency?.contradictions?.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  list.innerHTML = "";
+  consistency.contradictions.forEach((c) => {
+    const card = document.createElement("div");
+    card.className = "v2-contradiction-card";
+    card.innerHTML = `
+      <strong>${escapeHtml(c.type || "矛盾")}</strong>
+      <span class="v2-severity" data-level="${escapeHtml(c.severity || "medium")}">${escapeHtml(c.severity || "")}</span>
+      <p>${escapeHtml(c.description || "")}</p>
+    `;
+    list.appendChild(card);
+  });
 }
 
 function renderEmotionAnalysis(emotion) {
@@ -1802,11 +2127,7 @@ async function handlePdfFile(file) {
     setPdfUploadState("success", statusMsg);
     await classifyCurrentText({ force: true, reason: "pdf" });
 
-    // Cross-flow: stash File for the evidence-verification panel
-    // (auto-reuse so the user doesn't have to upload the same PDF twice),
-    // and try to extract company/year metadata to pre-fill its form.
-    window._lastUploadedPdf = file;
-    autofillEvidencePanel(file, data.text);
+    pdfSourceMode = true;
 
     setTimeout(() => setPdfUploadState("idle"), warnings.length ? 8000 : 5000);
   } catch (error) {
@@ -1985,312 +2306,11 @@ function setPdfUploadState(state, message) {
   }
 }
 
-// ── Evidence Panel (ESG report self-verification) ──
+// ── (Evidence panel removed — merged into v2 unified flow) ──
+// Functions removed: updateEvidenceBadge, setupEvidenceUpload,
+// autofillEvidencePanel, runEvidenceVerification, loadEvidenceReport,
+// renderEvidenceReport.
 
-let _evidenceFile = null;
-let _evidencePollTimer = null;
-
-function setEvidenceProgress(pct, label, msg) {
-  const wrap = document.getElementById("evidenceProgress");
-  const fill = document.getElementById("evidenceProgressFill");
-  const lblEl = document.getElementById("evidenceProgressLabel");
-  const pctEl = document.getElementById("evidenceProgressPct");
-  const msgEl = document.getElementById("evidenceProgressMsg");
-  if (wrap) wrap.hidden = false;
-  if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-  if (lblEl && label) lblEl.textContent = label;
-  if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
-  if (msgEl && msg !== undefined) msgEl.textContent = msg;
-}
-
-function clearEvidenceProgress() {
-  const wrap = document.getElementById("evidenceProgress");
-  if (wrap) wrap.hidden = true;
-}
-
-async function updateEvidenceBadge() {
-  const badge = document.getElementById("evidenceStatusBadge");
-  const btn = document.getElementById("evidenceStartButton");
-  if (!badge) return;
-  try {
-    const resp = await apiFetch(apiUrl("/api/health"));
-    const payload = await resp.json();
-    const avail = !!payload.evidenceEngine?.available;
-    if (avail) {
-      badge.textContent = "引擎可用";
-      badge.classList.add("is-available");
-      if (btn) btn.disabled = !_evidenceFile;
-    } else {
-      badge.textContent = "引擎未启动";
-      badge.classList.remove("is-available");
-      if (btn) {
-        btn.disabled = true;
-        btn.title = "证据核验引擎未启动。请确认 GEMINI_API_KEY 已配置且 Python sidecar 在运行。";
-      }
-    }
-  } catch {
-    badge.textContent = "引擎未启动";
-    badge.classList.remove("is-available");
-    if (btn) btn.disabled = true;
-  }
-}
-
-function setupEvidenceUpload() {
-  const zone = document.getElementById("evidenceUploadZone");
-  const input = document.getElementById("evidencePdfInput");
-  const btn = document.getElementById("evidenceStartButton");
-  if (!zone || !input) return;
-
-  function handleFile(file) {
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      alert("仅支持 PDF 文件");
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      alert("文件超过 50MB 上限");
-      return;
-    }
-    _evidenceFile = file;
-    const label = zone.querySelector(".evidence-upload-label");
-    if (label) label.textContent = `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
-    if (btn) btn.disabled = false;
-  }
-
-  zone.addEventListener("click", () => input.click());
-  zone.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      input.click();
-    }
-  });
-  input.addEventListener("change", () => handleFile(input.files[0]));
-  zone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    zone.classList.add("dragover");
-  });
-  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
-  zone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    zone.classList.remove("dragover");
-    handleFile(e.dataTransfer.files[0]);
-  });
-
-  btn?.addEventListener("click", runEvidenceVerification);
-}
-
-/**
- * Pre-fill the evidence-verification panel after a PDF upload elsewhere.
- *
- * Saves the user from re-uploading the same PDF and from retyping the
- * company name + reporting year. Calls /api/v2/extract-metadata which
- * returns LLM-extracted (or filename-derived) {company, year}.
- */
-async function autofillEvidencePanel(file, extractedText) {
-  // 1. Reuse the file as the evidence-verification source.
-  _evidenceFile = file;
-  const zone = document.getElementById("evidenceUploadZone");
-  const label = zone?.querySelector(".evidence-upload-label");
-  if (label) {
-    label.innerHTML = `已自动复用上传的 PDF: <strong>${file.name}</strong>（${(file.size / 1024 / 1024).toFixed(1)} MB）— 点击此处可换文件`;
-  }
-  zone?.classList.add("auto-filled");
-  const btn = document.getElementById("evidenceStartButton");
-  if (btn && !btn.title?.startsWith("证据核验引擎")) btn.disabled = false;
-
-  // 2. Try to pre-fill company name + reporting year via LLM (or filename fallback).
-  try {
-    const resp = await apiFetch(apiUrl("/api/v2/extract-metadata"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: extractedText || "", filename: file.name }),
-    });
-    if (!resp.ok) return;
-    const meta = await resp.json();
-    const companyInput = document.getElementById("evidenceCompany");
-    const yearInput = document.getElementById("evidenceYear");
-    // Only auto-fill if user hasn't typed anything yet — never clobber edits.
-    if (companyInput && meta.company && !companyInput.value.trim()) {
-      companyInput.value = meta.company;
-      companyInput.dataset.autofilled = String(meta.confidence ?? 0.5);
-    }
-    if (yearInput && meta.year && !yearInput.value.trim()) {
-      yearInput.value = String(meta.year);
-      yearInput.dataset.autofilled = String(meta.confidence ?? 0.5);
-    }
-  } catch {
-    // Silent: autofill is a nicety, not required.
-  }
-}
-
-async function runEvidenceVerification() {
-  if (!_evidenceFile) return;
-  const btn = document.getElementById("evidenceStartButton");
-  if (btn) btn.disabled = true;
-  document.getElementById("evidenceResult").hidden = true;
-  setEvidenceProgress(5, "上传中", "正在上传 PDF...");
-
-  const company = document.getElementById("evidenceCompany").value.trim() || "unknown";
-  const year = document.getElementById("evidenceYear").value || 2024;
-
-  const fd = new FormData();
-  fd.append("file", _evidenceFile);
-  fd.append("company", company);
-  fd.append("year", year);
-  fd.append("report_type", "esg_report");
-  fd.append("language", "zh");
-
-  let analysisId;
-  try {
-    const resp = await fetch(apiUrl("/evidence/upload"), { method: "POST", body: fd });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
-    analysisId = data.analysis_id;
-  } catch (err) {
-    setEvidenceProgress(0, "上传失败", err.message);
-    if (btn) btn.disabled = false;
-    return;
-  }
-
-  setEvidenceProgress(15, "索引中", "PDF 已上传，正在建立索引...");
-
-  // Poll status
-  if (_evidencePollTimer) clearInterval(_evidencePollTimer);
-  _evidencePollTimer = setInterval(async () => {
-    try {
-      const resp = await fetch(apiUrl(`/evidence/status/${analysisId}`));
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-      const status = data.status || "";
-      const progress = data.progress || 0;
-      const stageLabel = {
-        uploading: "上传中",
-        indexing: "索引中",
-        extracting: "提取声明",
-        verifying: "证据核验",
-        completed: "完成",
-        failed: "失败",
-      }[status] || status;
-      // Build human progress text. Treat null verdicts_complete as "not
-      // started yet" (don't show "null"); show "X/total" when a number.
-      let msg = "";
-      if (typeof data.claims_found === "number" && data.claims_found > 0) {
-        msg = `已识别 ${data.claims_found} 条声明`;
-        if (typeof data.verdicts_complete === "number") {
-          msg += `，已核验 ${data.verdicts_complete}/${data.claims_found}`;
-        } else if (status === "verifying") {
-          msg += `，正在核验…`;
-        }
-      }
-      setEvidenceProgress(progress, stageLabel, msg);
-      if (status === "completed") {
-        clearInterval(_evidencePollTimer);
-        _evidencePollTimer = null;
-        await loadEvidenceReport(analysisId);
-        if (btn) btn.disabled = false;
-      } else if (status === "failed") {
-        clearInterval(_evidencePollTimer);
-        _evidencePollTimer = null;
-        setEvidenceProgress(progress, "失败", data.error || "未知错误");
-        if (btn) btn.disabled = false;
-      }
-    } catch (err) {
-      // Ignore intermittent polling errors
-    }
-  }, 2000);
-}
-
-async function loadEvidenceReport(analysisId) {
-  try {
-    const resp = await fetch(apiUrl(`/evidence/report/${analysisId}`));
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-    renderEvidenceReport(data);
-    setEvidenceProgress(100, "完成", "证据核验已完成");
-  } catch (err) {
-    setEvidenceProgress(100, "失败", `加载报告失败: ${err.message}`);
-  }
-}
-
-function renderEvidenceReport(data) {
-  const result = document.getElementById("evidenceResult");
-  if (!result) return;
-  result.hidden = false;
-
-  // Scores (support both nested and flat key shapes)
-  const textRisk = data.text_risk ?? data.scores?.text_risk ?? 0;
-  const evRisk = data.evidence_risk ?? data.scores?.evidence_risk ?? 0;
-  const gri = data.gri ?? data.scores?.gri ?? data.GRI ?? 0;
-  const setScore = (idLabel, idValue, label, n) => {
-    const v = document.getElementById(idValue);
-    const l = document.getElementById(idLabel);
-    if (v) v.textContent = Math.round(n);
-    if (l) l.textContent = label;
-  };
-  const riskLabel = (n) => n < 30 ? "低" : n < 60 ? "中" : n < 80 ? "较高" : "高";
-  setScore("evidenceTextRiskLabel", "evidenceTextRisk", riskLabel(textRisk), textRisk);
-  setScore("evidenceEvidenceRiskLabel", "evidenceEvidenceRisk", riskLabel(evRisk), evRisk);
-  setScore("evidenceGRILabel", "evidenceGRI", riskLabel(gri), gri);
-
-  // Verdict distribution
-  const dist = data.verdict_distribution || data.distribution || {};
-  document.getElementById("evSupported").textContent = `✅ 支持: ${dist.supported || 0}`;
-  document.getElementById("evPartial").textContent = `⚠️ 部分支持: ${dist.partial || dist.partially_supported || 0}`;
-  document.getElementById("evContradicted").textContent = `❌ 矛盾: ${dist.contradicted || 0}`;
-  document.getElementById("evInsufficient").textContent = `❓ 证据不足: ${dist.insufficient || 0}`;
-
-  // Findings
-  const findingsList = document.getElementById("evidenceFindingsList");
-  findingsList.innerHTML = "";
-  (data.key_findings || data.findings || []).forEach((f) => {
-    const li = document.createElement("li");
-    li.textContent = typeof f === "string" ? f : (f.text || JSON.stringify(f));
-    findingsList.appendChild(li);
-  });
-  if (!findingsList.children.length) {
-    const li = document.createElement("li");
-    li.textContent = "暂无关键发现";
-    findingsList.appendChild(li);
-  }
-
-  // Claims
-  const claims = data.claims || [];
-  document.getElementById("evidenceClaimsCount").textContent = claims.length;
-  const claimsList = document.getElementById("evidenceClaimsList");
-  claimsList.innerHTML = "";
-  claims.forEach((c) => {
-    const verdict = c.verdict || c.label || "insufficient";
-    const verdictMap = {
-      supported: { cls: "supported", label: "✅ 支持" },
-      partially_supported: { cls: "partial", label: "⚠️ 部分支持" },
-      partial: { cls: "partial", label: "⚠️ 部分支持" },
-      contradicted: { cls: "contradicted", label: "❌ 矛盾" },
-      insufficient: { cls: "insufficient", label: "❓ 证据不足" },
-    };
-    const v = verdictMap[verdict] || verdictMap.insufficient;
-    const card = document.createElement("div");
-    card.className = "evidence-claim-card";
-    const head = document.createElement("div");
-    const tag = document.createElement("span");
-    tag.className = `evidence-claim-verdict ${v.cls}`;
-    tag.textContent = v.label;
-    head.appendChild(tag);
-    card.appendChild(head);
-    const textP = document.createElement("p");
-    textP.style.margin = "0";
-    textP.textContent = c.claim || c.text || "";
-    card.appendChild(textP);
-    if (c.reasoning || c.evidence_text) {
-      const reason = document.createElement("p");
-      reason.style.margin = "0";
-      reason.style.color = "var(--muted)";
-      reason.style.fontSize = "11px";
-      reason.textContent = c.reasoning || c.evidence_text;
-      card.appendChild(reason);
-    }
-    claimsList.appendChild(card);
-  });
-}
 
 // ── Deep Analysis (M3/M4/M5) ──
 
