@@ -149,10 +149,8 @@ function createTray() {
 }
 
 function resolveNlpServiceDir() {
-  const candidate = path.join(__dirname, "..", "nlp-service");
-  // ASAR-internal paths cannot be spawned — OS doesn't understand the virtual FS
-  if (!candidate.includes(".asar") && fs.existsSync(path.join(candidate, "main.py"))) {
-    return candidate;
+  if (fs.existsSync(path.join(__dirname, "..", "nlp-service", "main.py"))) {
+    return path.join(__dirname, "..", "nlp-service");
   }
   const altPath = path.join(app.getPath("userData"), "nlp-service");
   if (fs.existsSync(path.join(altPath, "main.py"))) {
@@ -202,8 +200,7 @@ function stopNlpService() {
 
 function resolveEvidenceEngineDir() {
   const candidate = path.join(__dirname, "..", "evidence-engine");
-  // ASAR-internal paths cannot be spawned — OS doesn't understand the virtual FS
-  if (!candidate.includes(".asar") && fs.existsSync(path.join(candidate, "sidecar_server.py"))) {
+  if (fs.existsSync(path.join(candidate, "sidecar_server.py"))) {
     return candidate;
   }
   const altPath = path.join(app.getPath("userData"), "evidence-engine");

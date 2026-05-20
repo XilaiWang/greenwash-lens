@@ -187,12 +187,6 @@ async function analyzeText() {
     }
 
     const mode = resolveAnalysisMode();
-    // v2/fast without LLM has no scoring (gauge stays at 0%) — fall back to v1 rule engine
-    if (mode === "fast" && !llmAvailable) {
-      await runV1Analysis(requestPayload);
-      return;
-    }
-
     const stopTicker = startV2ProgressTicker(mode);
 
     try {
@@ -268,13 +262,7 @@ async function runV1Analysis(requestPayload) {
     }
     currentJobId = job.id;
     renderProgress(job);
-    const stopTicker = startLegacyProgressTicker();
-    try {
-      await sleep(JOB_POLL_INTERVAL_MS);
-      await pollJob(job.id, requestPayload);
-    } finally {
-      stopTicker();
-    }
+    await pollJob(job.id, requestPayload);
   } catch (err) {
     await runLegacyAnalysis(requestPayload);
   }
