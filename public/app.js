@@ -2139,6 +2139,21 @@ async function handlePdfFile(file) {
 
 let currentDocument = null;
 
+// Stores sentence char-offset boundaries per <p> element, used by applyHighlights
+const paraSentBounds = new WeakMap();
+
+function computeSentenceBounds(text) {
+  const bounds = [];
+  let start = 0;
+  for (const m of text.matchAll(/[.!?。！？…]+\s*|\n+/g)) {
+    const sentEnd = m.index + m[0].trimEnd().length;
+    if (sentEnd > start) bounds.push({ start, end: sentEnd });
+    start = m.index + m[0].length;
+  }
+  if (start < text.length) bounds.push({ start, end: text.length });
+  return bounds;
+}
+
 const READER_CHARS_PER_PAGE = 2200;
 
 function paginateBlocks(doc) {
@@ -2179,11 +2194,20 @@ function renderDocument(doc) {
     const pageEl = document.createElement("div");
     pageEl.className = "doc-page";
 
+    let lastPdfPage = null;
     blocks.forEach((block) => {
+      if (block.page && block.page !== lastPdfPage) {
+        const marker = document.createElement("span");
+        marker.className = "doc-pdf-page-marker";
+        marker.textContent = `第 ${block.page} 页`;
+        pageEl.append(marker);
+        lastPdfPage = block.page;
+      }
       if (block.type === "paragraph") {
         const p = document.createElement("p");
         p.className = "doc-para";
         p.textContent = block.text;
+        paraSentBounds.set(p, computeSentenceBounds(block.text));
         pageEl.append(p);
       } else if (block.type === "table") {
         const wrapper = document.createElement("div");
@@ -2216,6 +2240,7 @@ function renderDocument(doc) {
 }
 
 function applyHighlights(signals) {
+  if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.clear();
   if (!docViewerBody || !currentDocument) return;
 
   const signalMap = new Map();
@@ -2227,18 +2252,26 @@ function applyHighlights(signals) {
       const term = s.slice(colonIdx + 2);
       if (!term) return;
       if (prefix.includes("绿色声明") || prefix.includes("green")) {
-        signalMap.set(term, "green-signal");
+        signalMap.set(term, "green");
       } else if (prefix.includes("模糊")) {
-        signalMap.set(term, "vague-signal");
+        signalMap.set(term, "vague");
       } else if (prefix.includes("断言") || prefix.includes("absolute")) {
-        signalMap.set(term, "absolute-signal");
+        signalMap.set(term, "absolute");
       } else if (prefix.includes("承诺") || prefix.includes("future")) {
-        signalMap.set(term, "future-signal");
+        signalMap.set(term, "future");
       }
     });
   }
 
-  if (!signalMap.size) return;
+  if (!signalMap.size || typeof CSS === "undefined" || !CSS.highlights) return;
+
+  const TYPES = ["green", "vague", "absolute", "future"];
+  const termRanges = Object.fromEntries(TYPES.map((t) => [t, []]));
+  // Maps keyed by "start-end" string to deduplicate ranges within same text node
+  const sentKeys = Object.fromEntries(TYPES.map((t) => [t, new Set()]));
+  const ctxKeys  = Object.fromEntries(TYPES.map((t) => [t, new Set()]));
+  const sentRanges = Object.fromEntries(TYPES.map((t) => [t, []]));
+  const ctxRanges  = Object.fromEntries(TYPES.map((t) => [t, []]));
 
   const walker = document.createTreeWalker(docViewerBody, NodeFilter.SHOW_TEXT);
   const textNodes = [];
@@ -2246,50 +2279,73 @@ function applyHighlights(signals) {
 
   textNodes.forEach((node) => {
     const text = node.textContent;
-    const matches = [];
+    const para = node.parentElement?.closest(".doc-para");
+    const bounds = para ? paraSentBounds.get(para) : null;
 
-    signalMap.forEach((cssClass, term) => {
+    signalMap.forEach((type, term) => {
       const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(escaped, "gi");
       let match;
       while ((match = regex.exec(text)) !== null) {
-        matches.push({ start: match.index, end: match.index + match[0].length, cssClass });
+        const mStart = match.index;
+        const mEnd = mStart + match[0].length;
+
+        // Term-level range
+        const tr = new Range();
+        tr.setStart(node, mStart);
+        tr.setEnd(node, mEnd);
+        termRanges[type].push(tr);
+
+        if (!bounds) return;
+
+        // Find containing sentence
+        const sentIdx = bounds.findIndex((b) => b.start <= mStart && b.end >= mEnd);
+        if (sentIdx === -1) return;
+        const sb = bounds[sentIdx];
+        const sKey = `${sb.start}-${sb.end}`;
+
+        if (!sentKeys[type].has(sKey)) {
+          sentKeys[type].add(sKey);
+          const sr = new Range();
+          sr.setStart(node, sb.start);
+          sr.setEnd(node, sb.end);
+          sentRanges[type].push(sr);
+        }
+
+        // Adjacent context sentences
+        const allSentKeys = TYPES.flatMap((t) => [...sentKeys[t]]);
+        for (const ctxIdx of [sentIdx - 1, sentIdx + 1]) {
+          if (ctxIdx < 0 || ctxIdx >= bounds.length) continue;
+          const cb = bounds[ctxIdx];
+          const cKey = `${cb.start}-${cb.end}`;
+          if (allSentKeys.includes(cKey)) continue;
+          if (ctxKeys[type].has(cKey)) continue;
+          ctxKeys[type].add(cKey);
+          const cr = new Range();
+          cr.setStart(node, cb.start);
+          cr.setEnd(node, cb.end);
+          ctxRanges[type].push(cr);
+        }
       }
     });
+  });
 
-    if (!matches.length) return;
-
-    matches.sort((a, b) => a.start - b.start);
-
-    const merged = [];
-    for (const m of matches) {
-      const last = merged[merged.length - 1];
-      if (last && last.end >= m.start) {
-        last.end = Math.max(last.end, m.end);
-        if (!last.classes) last.classes = [last.cssClass];
-        if (!last.classes.includes(m.cssClass)) last.classes.push(m.cssClass);
-      } else {
-        merged.push({ start: m.start, end: m.end, cssClass: m.cssClass });
-      }
+  TYPES.forEach((type) => {
+    if (termRanges[type].length) {
+      const h = new Highlight(...termRanges[type]);
+      h.priority = 2;
+      CSS.highlights.set(`term-${type}`, h);
     }
-
-    const fragment = document.createDocumentFragment();
-    let pos = 0;
-    for (const m of merged) {
-      if (m.start > pos) {
-        fragment.appendChild(document.createTextNode(text.slice(pos, m.start)));
-      }
-      const mark = document.createElement("mark");
-      mark.className = m.classes ? m.classes.join(" ") : m.cssClass;
-      mark.textContent = text.slice(m.start, m.end);
-      fragment.appendChild(mark);
-      pos = m.end;
+    if (sentRanges[type].length) {
+      const h = new Highlight(...sentRanges[type]);
+      h.priority = 1;
+      CSS.highlights.set(`sent-${type}`, h);
     }
-    if (pos < text.length) {
-      fragment.appendChild(document.createTextNode(text.slice(pos)));
+    if (ctxRanges[type].length) {
+      const h = new Highlight(...ctxRanges[type]);
+      h.priority = 0;
+      CSS.highlights.set(`ctx-${type}`, h);
     }
-
-    node.parentNode.replaceChild(fragment, node);
   });
 }
 
@@ -3025,6 +3081,7 @@ clearButton.addEventListener("click", () => {
   resetClassificationControls({ resetSelects: true });
   setClassificationStatus("添加内容后自动判断场景和行业");
   exportButton.disabled = true;
+  if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.clear();
   if (docViewer) docViewer.hidden = true;
   if (docViewerBody) docViewerBody.innerHTML = "";
   document.querySelector(".result-panel").classList.remove("analyzing");

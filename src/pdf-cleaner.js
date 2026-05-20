@@ -6,6 +6,7 @@ const SENTENCE_END = new Set([
 
 const MERGE_START = /^[\p{Lowercase_Letter}\p{Ideographic}0-9\-—–]/u;
 const WORD_CHAR = /[\p{Lowercase_Letter}\p{Ideographic}0-9]/u;
+const CJK = /[\p{Ideographic}]/u;
 const DASHES = new Set(["-", "—", "–"]);
 
 function repairLetterSpacing(text) {
@@ -25,41 +26,54 @@ function cleanPdfText(rawText) {
   const originalLength = rawText.length;
   const warnings = [];
 
-  let text = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  text = repairLetterSpacing(text);
-  const lines = text.split("\n");
+  // Split on form-feed characters to track original PDF page numbers
+  const rawPages = rawText.split("\f");
 
   const docBlocks = [];
-  let paraLines = [];
-  let tableBuffer = [];
+  let totalLineCount = 0;
 
-  function flushPara() {
-    if (!paraLines.length) return;
-    const merged = mergeParagraph(paraLines);
-    docBlocks.push({ type: "paragraph", text: merged });
-    paraLines = [];
-  }
+  for (let pageIdx = 0; pageIdx < rawPages.length; pageIdx++) {
+    const pageNum = pageIdx + 1;
+    let pageText = rawPages[pageIdx].replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    pageText = repairLetterSpacing(pageText);
+    const lines = pageText.split("\n");
+    totalLineCount += lines.length;
 
-  function flushTable() {
-    if (!tableBuffer.length) return;
-    docBlocks.push({ type: "table", rows: tableBuffer.slice() });
-    tableBuffer = [];
-  }
+    let paraLines = [];
+    let tableBuffer = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    if (!trimmed || isOrphan(trimmed)) continue;
-
-    if (isTableRow(trimmed)) {
-      flushPara();
-      tableBuffer.push(trimmed);
-    } else {
-      if (tableBuffer.length) flushTable();
-      paraLines.push(trimmed);
+    function flushPara() {
+      if (!paraLines.length) return;
+      const merged = mergeParagraph(paraLines);
+      docBlocks.push({ type: "paragraph", text: merged, page: pageNum });
+      paraLines = [];
     }
+
+    function flushTable() {
+      if (!tableBuffer.length) return;
+      docBlocks.push({ type: "table", rows: tableBuffer.slice(), page: pageNum });
+      tableBuffer = [];
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (isOrphan(trimmed)) continue;
+      if (!trimmed) {
+        flushPara();
+        continue;
+      }
+
+      if (isTableRow(trimmed)) {
+        flushPara();
+        tableBuffer.push(trimmed);
+      } else {
+        if (tableBuffer.length) flushTable();
+        paraLines.push(trimmed);
+      }
+    }
+    flushTable();
+    flushPara();
   }
-  flushTable();
-  flushPara();
 
   for (const block of docBlocks) {
     if (block.type === "paragraph" && REFERENCE_INDEX_RE.test(block.text)) {
@@ -107,7 +121,7 @@ function cleanPdfText(rawText) {
   }
 
   const removedLines =
-    lines.length -
+    totalLineCount -
     paraTexts.reduce((sum, t) => sum + (t.match(/\n/g) || []).length + 1, 0) -
     document
       .filter((b) => b.type === "table")
@@ -151,7 +165,7 @@ function isTableRow(trimmed) {
 
   const whitespaceRatio =
     (trimmed.match(/[ \t]/g) || []).length / Math.max(1, trimmed.length);
-  if (whitespaceRatio > 0.35 && spaces >= 2) return true;
+  if (whitespaceRatio > 0.35 && spaces >= 1) return true;
 
   const digitRatio =
     (trimmed.match(/\d/g) || []).length / Math.max(1, trimmed.length);
@@ -173,7 +187,8 @@ function mergePair(prev, current) {
   }
 
   if (WORD_CHAR.test(lastChar) && WORD_CHAR.test(current[0])) {
-    return prev + current;
+    if (CJK.test(lastChar) || CJK.test(current[0])) return prev + current;
+    return prev + " " + current;
   }
 
   return prev + " " + current;

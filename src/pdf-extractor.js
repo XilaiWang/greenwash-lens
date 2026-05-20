@@ -38,7 +38,7 @@ async function extractWithPoppler(filePath) {
   }
 
   await new Promise((resolve, reject) => {
-    execFile(binary, ["-layout", filePath, outPath], { timeout: 30000 }, (error) => {
+    execFile(binary, [filePath, outPath], { timeout: 30000 }, (error) => {
       if (error) return reject(error);
       resolve();
     });

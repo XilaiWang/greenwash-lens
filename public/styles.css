@@ -25,6 +25,7 @@
   --radius-full: 999px;
   --transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  --reader-bg: #e3e5e4;
 }
 
 /* Dark mode */
@@ -50,6 +51,7 @@
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.18);
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.12);
+  --reader-bg: #1e2422;
 }
 
 [data-theme="dark"] body {
@@ -301,8 +303,8 @@
   background: var(--surface-strong);
 }
 
-[data-theme="dark"] .doc-table {
-  background: var(--surface-strong);
+[data-theme="dark"] .doc-table-label {
+  color: var(--muted);
 }
 
 [data-theme="dark"] .progress-stage,
@@ -1844,7 +1846,7 @@ button:disabled {
 .doc-viewer-panel {
   display: flex;
   flex-direction: column;
-  background: #525659;
+  background: var(--reader-bg);
   border-radius: var(--radius);
   overflow: hidden;
   height: 560px;
@@ -1861,24 +1863,9 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 20px;
-  background: #3c3f41;
-  border-bottom: 1px solid #2a2c2e;
+  background: var(--surface-strong);
+  border-bottom: 1px solid var(--line);
   flex-shrink: 0;
-}
-
-.doc-viewer-toolbar .metric-label {
-  color: #d0d0d0;
-}
-
-.doc-viewer-close-btn {
-  color: #c8c8c8 !important;
-  border-color: rgba(255, 255, 255, 0.18) !important;
-}
-
-.doc-viewer-close-btn:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
 }
 
 .doc-viewer-scroll {
@@ -1893,27 +1880,41 @@ button:disabled {
 
 /* Individual A4-style page */
 .doc-page {
-  background: #fff;
+  background: var(--surface);
   width: 760px;
   max-width: calc(100vw - 48px);
   padding: 64px 72px 52px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
   position: relative;
+  border-radius: var(--radius-sm);
 }
 
 .doc-page-number {
   text-align: center;
   margin: 36px 0 0;
   font-size: 11px;
-  color: #bbb;
+  color: var(--muted);
   letter-spacing: 0.06em;
+}
+
+.doc-pdf-page-marker {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--teal);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  background: var(--teal-soft);
+  border-radius: var(--radius-full);
+  display: inline-block;
+  margin: 0 0 14px;
 }
 
 .doc-para {
   margin-bottom: 1.1em;
   line-height: 1.82;
   font-size: 14.5px;
-  color: #1c1c1c;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
@@ -1921,9 +1922,9 @@ button:disabled {
   max-width: 100%;
   margin: 12px 0 20px;
   padding: 12px 14px;
-  border: 1px solid #e2e2e2;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #f8f9fa;
+  background: var(--surface-strong);
   overflow-x: auto;
   font-size: 12.5px;
   line-height: 1.5;
@@ -1946,37 +1947,23 @@ button:disabled {
 }
 
 
-mark.green-signal {
-  background: #9aedc3;
-  color: #0b4a28;
-  border-radius: 2px;
-  padding: 0 2px;
-  font-weight: 600;
-}
+/* CSS Custom Highlight API — term level (priority 2, deepest color) */
+::highlight(term-green)    { background-color: #28d472; color: #06391c; }
+::highlight(term-vague)    { background-color: #f5b800; color: #472b00; }
+::highlight(term-absolute) { background-color: #ff6b6b; color: #5c0000; }
+::highlight(term-future)   { background-color: #5aa8ff; color: #021f52; }
 
-mark.vague-signal {
-  background: #ffd160;
-  color: #5e3800;
-  border-radius: 2px;
-  padding: 0 2px;
-  font-weight: 600;
-}
+/* CSS Custom Highlight API — sentence level (priority 1, medium wash) */
+::highlight(sent-green)    { background-color: rgba(40, 212, 114, 0.28); }
+::highlight(sent-vague)    { background-color: rgba(245, 184, 0, 0.28);  }
+::highlight(sent-absolute) { background-color: rgba(255, 107, 107, 0.28); }
+::highlight(sent-future)   { background-color: rgba(90, 168, 255, 0.28); }
 
-mark.absolute-signal {
-  background: #ffaaaa;
-  color: #7a0d0d;
-  border-radius: 2px;
-  padding: 0 2px;
-  font-weight: 600;
-}
-
-mark.future-signal {
-  background: #a8ccff;
-  color: #0c2a5e;
-  border-radius: 2px;
-  padding: 0 2px;
-  font-weight: 600;
-}
+/* CSS Custom Highlight API — context level (priority 0, faint tint) */
+::highlight(ctx-green)     { background-color: rgba(40, 212, 114, 0.10); }
+::highlight(ctx-vague)     { background-color: rgba(245, 184, 0, 0.10);  }
+::highlight(ctx-absolute)  { background-color: rgba(255, 107, 107, 0.10); }
+::highlight(ctx-future)    { background-color: rgba(90, 168, 255, 0.10); }
 
 /* Inner cards (no longer need order: since they live inside tab panels) */
 
@@ -2058,6 +2045,10 @@ mark.future-signal {
 
 .result-panel.analyzing .skeleton-group {
   display: grid;
+}
+
+.result-panel.analyzing .score-skeleton {
+  display: none;
 }
 
 .result-panel.analyzing .breakdown-grid,
