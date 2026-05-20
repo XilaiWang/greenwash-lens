@@ -400,15 +400,20 @@ h1 {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
-  grid-template-areas: "input result";
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "result"
+    "input";
   gap: 20px;
   align-items: start;
   margin-bottom: 20px;
 }
 
 .workspace.has-document {
-  grid-template-areas: "input result";
+  grid-template-areas:
+    "result"
+    "doc"
+    "input";
 }
 
 .input-panel,
@@ -847,8 +852,7 @@ button:focus-visible {
   display: grid;
   place-items: center;
   gap: 14px;
-  min-height: 300px;
-  padding: 34px 20px 28px;
+  padding: 40px 20px 32px;
   text-align: center;
 }
 
@@ -2160,15 +2164,15 @@ button:focus-visible {
   .workspace {
     grid-template-columns: 1fr;
     grid-template-areas:
-      "input"
-      "result";
+      "result"
+      "input";
   }
 
   .workspace.has-document {
     grid-template-areas:
-      "input"
+      "result"
       "doc"
-      "result";
+      "input";
   }
 
   .input-split {
