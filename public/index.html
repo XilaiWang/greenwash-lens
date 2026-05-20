@@ -111,7 +111,8 @@
 
           <div class="button-row">
             <button class="primary-button" type="submit" data-i18n="btn.startAnalysis">开始分析</button>
-            <select id="analysisMode" class="mode-select" title="分析深度" data-i18n-title="field.modeDepth">
+            <label for="analysisMode" class="sr-only" data-i18n="field.modeDepth">分析深度</label>
+            <select id="analysisMode" class="mode-select" title="分析深度" data-i18n-title="field.modeDepth" aria-label="分析深度" data-i18n-aria="field.modeDepth">
               <option value="auto" selected data-i18n="field.modeAuto">自动</option>
               <option value="fast" data-i18n="field.modeFast">快速（关键词）</option>
               <option value="standard" data-i18n="field.modeStandard">标准（+LLM 结构化）</option>
