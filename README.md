@@ -82,6 +82,10 @@ v1 `/api/analyze` 保留不动，前端继续工作。等 Stage 2-3 完成后再
 ![暗色模式](docs/screenshots/08-dark-home.png)  ![暗色模式结果](docs/screenshots/09-dark-results.png)
 *支持亮色/暗色模式一键切换，自动跟随系统偏好*
 
+### PDF 文档阅读器
+![PDF阅读器](docs/screenshots/10-pdf-reader.png)
+*内嵌滚动式阅读器，上传报告后自动展开；关键词自动高亮（绿色声明、模糊表述、绝对断言、未来承诺），每段内容标注原始 PDF 页码*
+
 ---
 
 ## 开发运行
