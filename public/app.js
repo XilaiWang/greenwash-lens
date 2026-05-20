@@ -1,3 +1,5 @@
+const t = (...args) => window.i18n?.t(...args) ?? args[0];
+
 const form = document.querySelector("#analysisForm");
 const textArea = document.querySelector("#claimText");
 const contextType = document.querySelector("#contextType");
@@ -145,7 +147,7 @@ async function analyzeText() {
     exportButton.disabled = true;
     clearTimeout(classifyTimer);
     lastClassifiedText = "";
-    setClassificationStatus("添加内容后自动判断场景和行业");
+    setClassificationStatus(t('classification.autoHint'));
     renderResult(createEmptyResult());
     hideV2Sections();
     renderLlm(null, null);
@@ -155,7 +157,7 @@ async function analyzeText() {
       status: "idle",
       stage: "idle",
       progress: 0,
-      message: "输入文本后开始分析。",
+      message: t('progress.idle'),
     });
     textArea.focus();
     return;
@@ -172,7 +174,7 @@ async function analyzeText() {
     status: "creating",
     stage: "creating",
     progress: 4,
-    message: "正在创建分析任务。",
+    message: t('msg.creating'),
   });
   renderVerification(null);
 
@@ -201,7 +203,7 @@ async function analyzeText() {
           await runV1Analysis(requestPayload);
           return;
         }
-        throw new Error(payload?.error || "v2 分析失败");
+        throw new Error(payload?.error || t('msg.v2Failed'));
       }
 
       stopTicker();
@@ -214,9 +216,9 @@ async function analyzeText() {
         stage: "completed",
         progress: 100,
         elapsedMs: Date.now() - currentJobStartedAt,
-        message: `v2 多层分析完成（${payload.mode}模式，${payload.meta?.stages_run?.join("→") || ""}）`,
+        message: t('msg.v2Done', { mode: payload.mode, stages: payload.meta?.stages_run?.join("→") || "" }),
       });
-      engineStatus.textContent = `应用已连接 · ${payload.meta?.engineVersion || "v2"}`;
+      engineStatus.textContent = t('status.connected', { version: payload.meta?.engineVersion || "v2" });
       loadHistory();
     } catch (err) {
       stopTicker();
@@ -230,9 +232,9 @@ async function analyzeText() {
       } catch {}
     }
     if (localEngine) {
-      await runLocalAnalysis(buildAnalysisRequestPayload(text), error.message || "后端不可用");
+      await runLocalAnalysis(buildAnalysisRequestPayload(text), error.message || t('msg.analysisFailed'));
     } else {
-      failAnalysis(error.message || "分析失败");
+      failAnalysis(error.message || t('msg.analysisFailed'));
     }
   } finally {
     setBusy(false);
@@ -256,7 +258,7 @@ async function runV1Analysis(requestPayload) {
         await runLegacyAnalysis(requestPayload);
         return;
       }
-      throw new Error(job?.error || "分析任务创建失败");
+      throw new Error(job?.error || t('msg.jobCreateFailed'));
     }
     currentJobId = job.id;
     renderProgress(job);
@@ -269,21 +271,21 @@ async function runV1Analysis(requestPayload) {
 function startV2ProgressTicker(mode) {
   const modeStages = {
     fast: [
-      { after: 0, stage: "L0", progress: 20, message: "L0 原子声明拆分" },
-      { after: 400, stage: "L1", progress: 60, message: "L1 特征提取" },
+      { after: 0, stage: "L0", progress: 20, message: "L0 Atomic claim splitting" },
+      { after: 400, stage: "L1", progress: 60, message: "L1 Feature extraction" },
     ],
     standard: [
-      { after: 0, stage: "L0", progress: 10, message: "L0 原子声明拆分" },
-      { after: 500, stage: "L1", progress: 25, message: "L1 特征提取" },
-      { after: 1000, stage: "L3", progress: 50, message: "L3 LLM 声明结构化" },
+      { after: 0, stage: "L0", progress: 10, message: "L0 Atomic claim splitting" },
+      { after: 500, stage: "L1", progress: 25, message: "L1 Feature extraction" },
+      { after: 1000, stage: "L3", progress: 50, message: "L3 LLM claim structuring" },
     ],
     comprehensive: [
-      { after: 0, stage: "L0", progress: 5, message: "L0 原子声明拆分" },
-      { after: 500, stage: "L1", progress: 12, message: "L1 特征提取" },
-      { after: 1000, stage: "L3", progress: 30, message: "L3 LLM 声明结构化" },
-      { after: 5000, stage: "L5a", progress: 55, message: "L5a 认证检测" },
-      { after: 6000, stage: "L6", progress: 70, message: "L6 一致性 & 七宗罪" },
-      { after: 7000, stage: "L7", progress: 85, message: "L7 GRI 聚合" },
+      { after: 0, stage: "L0", progress: 5, message: "L0 Atomic claim splitting" },
+      { after: 500, stage: "L1", progress: 12, message: "L1 Feature extraction" },
+      { after: 1000, stage: "L3", progress: 30, message: "L3 LLM claim structuring" },
+      { after: 5000, stage: "L5a", progress: 55, message: "L5a Certification detection" },
+      { after: 6000, stage: "L6", progress: 70, message: "L6 Consistency & seven sins" },
+      { after: 7000, stage: "L7", progress: 85, message: "L7 GRI aggregation" },
     ],
   };
   const stages = modeStages[mode] || modeStages.fast;
@@ -310,7 +312,7 @@ async function pollJob(jobId, requestPayload) {
 
   while (true) {
     if (Date.now() - currentJobStartedAt > JOB_TIMEOUT_MS) {
-      throw new Error("分析耗时过长，已停止等待。你可以稍后重试，或先关闭外部模型增强。");
+      throw new Error(t('msg.timeout'));
     }
 
     const response = await apiFetch(apiUrl(`/api/v1/analyze-jobs/${encodeURIComponent(jobId)}`));
@@ -328,7 +330,7 @@ async function pollJob(jobId, requestPayload) {
             stage: "fallback",
             progress: 100,
             elapsedMs: Date.now() - currentJobStartedAt,
-            message: "任务状态丢失，已切换到直连模式",
+            message: t('msg.switchedFallback'),
           });
           await runLegacyAnalysis(requestPayload);
           return;
@@ -338,7 +340,7 @@ async function pollJob(jobId, requestPayload) {
         continue;
       }
 
-      throw new Error(job.error || "分析任务读取失败");
+      throw new Error(job.error || t('msg.jobReadFailed'));
     }
 
     notFoundCount = 0;
@@ -349,14 +351,14 @@ async function pollJob(jobId, requestPayload) {
     if (job.status === "completed") {
       latestAnalysis = job.result;
       exportButton.disabled = false;
-      engineStatus.textContent = `应用已连接 · ${job.result.meta.engineVersion}`;
+      engineStatus.textContent = t('status.connected', { version: job.result.meta.engineVersion });
       applyHighlights(job.result?.result?.signals || []);
       loadHistory();
       return;
     }
 
     if (job.status === "failed") {
-      throw new Error(job.error || "分析任务失败");
+      throw new Error(job.error || t('msg.jobFailed'));
     }
 
     await sleep(JOB_POLL_INTERVAL_MS);
@@ -385,12 +387,12 @@ function failAnalysis(message) {
     message || buildUnavailableMessage();
   latestAnalysis = null;
   exportButton.disabled = true;
-  engineStatus.textContent = "应用未连接";
+  engineStatus.textContent = t('status.disconnected');
   renderResult({
     ...createEmptyResult(),
-    level: "连接异常",
+    level: t('msg.connectionAbnormal'),
     summary: detail,
-    factors: ["后端分析接口没有返回有效结果。"],
+    factors: [t('msg.connectionFailed')],
     signals: [fileModeHint()],
   });
   renderLlm(
@@ -398,7 +400,7 @@ function failAnalysis(message) {
       enabled: false,
       provider: "none",
       model: null,
-      summary: "当前没有拿到可用的外部模型补充结果。",
+      summary: t('msg.noLlmResult'),
       annotations: [],
       error: detail,
     },
@@ -411,7 +413,7 @@ function failAnalysis(message) {
       {
         id: "analysis_failed",
         status: "fail",
-        title: "分析任务失败",
+        title: t('clientVerif.analysisFailedTitle'),
         message: detail,
       },
     ],
@@ -430,7 +432,7 @@ async function loadHistory() {
     const payload = await response.json();
 
     if (!response.ok) {
-      throw new Error(payload.error || "历史记录读取失败");
+      throw new Error(payload.error || t('msg.historyReadFailed'));
     }
 
     renderHistory(payload.items || []);
@@ -462,7 +464,7 @@ function renderTrendChart(items) {
   }
 
   chart.hidden = false;
-  if (subtitle) subtitle.textContent = `最近 ${scores.length} 次分析`;
+  if (subtitle) subtitle.textContent = t('history.recentCount', { n: scores.length });
 
   const W = 720, H = 200;
   const padLeft = 42, padRight = 16, padTop = 16, padBottom = 22;
@@ -561,7 +563,7 @@ function renderHistory(items) {
     if (chart) chart.hidden = true;
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "暂无历史记录";
+    empty.textContent = t('history.noRecords');
     historyList.append(empty);
     return;
   }
@@ -592,7 +594,7 @@ function renderHistory(items) {
 
     deleteButton.className = "history-delete";
     deleteButton.type = "button";
-    deleteButton.setAttribute("aria-label", "删除这条历史记录");
+    deleteButton.setAttribute("aria-label", t('history.deleteAriaLabel'));
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -662,16 +664,16 @@ function scheduleSmartClassification() {
   const text = textArea.value.trim();
 
   if (text.length < 80) {
-    setClassificationStatus("添加内容后自动判断场景和行业");
+    setClassificationStatus(t('classification.autoHint'));
     return;
   }
 
   if (isManualClassificationField("context") && isManualClassificationField("sector")) {
-    setClassificationStatus("使用当前手动选择的场景和行业");
+    setClassificationStatus(t('classification.manualHint'));
     return;
   }
 
-  setClassificationStatus("输入停止后自动识别场景和行业", "loading");
+  setClassificationStatus(t('classification.loadingHint'), "loading");
   classifyTimer = setTimeout(() => {
     classifyCurrentText({ reason: "typing" });
   }, 1200);
@@ -681,7 +683,7 @@ async function classifyCurrentText({ force = false, reason = "text" } = {}) {
   const text = textArea.value.trim();
 
   if (!text || text.length < 20) {
-    setClassificationStatus("添加内容后自动判断场景和行业");
+    setClassificationStatus(t('classification.autoHint'));
     return null;
   }
 
@@ -692,14 +694,14 @@ async function classifyCurrentText({ force = false, reason = "text" } = {}) {
   const requestPayload = buildAnalysisRequestPayload(text);
 
   if (!force && requestPayload.contextType !== "auto" && requestPayload.sector !== "auto") {
-    setClassificationStatus("使用当前手动选择的场景和行业");
+    setClassificationStatus(t('classification.manualHint'));
     return null;
   }
 
   const requestId = ++classificationRequestId;
   lastClassifiedText = text;
   setClassificationStatus(
-    reason === "pdf" ? "PDF 已提取，正在用 AI 识别场景和行业..." : "正在用 AI 识别场景和行业...",
+    reason === "pdf" ? t('classification.pdfLoading') : t('classification.aiLoading'),
     "loading",
   );
 
@@ -715,7 +717,7 @@ async function classifyCurrentText({ force = false, reason = "text" } = {}) {
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(payload?.error || "自动识别失败");
+      throw new Error(payload?.error || t('msg.autoClassifyFailed'));
     }
 
     if (requestId !== classificationRequestId || !payload?.classification) {
@@ -746,13 +748,13 @@ async function classifyCurrentText({ force = false, reason = "text" } = {}) {
 
     const contextLabel = classification.context?.label || labelForContext(contextType.value);
     const sectorLabel = classification.sector?.label || labelForSector(sector.value);
-    const methodLabel = payload.method === "llm" ? "AI" : "本地";
-    setClassificationStatus(`${methodLabel}已识别：${contextLabel} · ${sectorLabel}`, "success");
+    const methodLabel = payload.method === "llm" ? t('classification.sourceAI') : t('classification.sourceKeyword');
+    setClassificationStatus(t('classification.aiIdentified', { method: methodLabel, context: contextLabel, sector: sectorLabel }), "success");
     renderClassification(classification);
     return classification;
   } catch (error) {
     if (requestId === classificationRequestId) {
-      setClassificationStatus(error.message || "自动识别暂不可用，将在分析时识别", "error");
+      setClassificationStatus(error.message || t('classification.errorFallback'), "error");
     }
     return null;
   }
@@ -789,7 +791,7 @@ function restoreHistoryItem(item) {
     status: "completed",
     stage: "completed",
     progress: 100,
-    message: "已加载历史结果。",
+    message: t('msg.historyRestored'),
   });
 }
 
@@ -799,7 +801,7 @@ async function clearHistory() {
 
     if (!response.ok) {
       const payload = await response.json();
-      throw new Error(payload.error || "清空失败");
+      throw new Error(payload.error || t('msg.clearFailed'));
     }
 
     renderHistory([]);
@@ -824,7 +826,7 @@ async function removeHistoryItem(id, element) {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      throw new Error(payload?.error || "删除失败");
+      throw new Error(payload?.error || t('msg.deleteFailed'));
     }
 
     element.remove();
@@ -916,28 +918,28 @@ function renderV2Result(payload) {
   if (scoring) {
     const gri = Math.round(scoring.document?.gri || 0);
     const riskLevel2 = scoring.document?.risk_level || "待分析";
-    const colorMap = { "低风险": "var(--green)", "中低风险": "var(--teal)", "中高风险": "var(--amber)", "高风险": "var(--red)" };
+    const colorMap = { "低风险": "var(--green)", "中低风险": "var(--teal)", "中高风险": "var(--amber)", "高风险": "var(--red)", "low-risk": "var(--green)", "medium-low-risk": "var(--teal)", "medium-high-risk": "var(--amber)", "high-risk": "var(--red)" };
     const toneMap = { "低风险": "green", "中低风险": "teal", "中高风险": "amber", "高风险": "red" };
 
     riskGauge.style.setProperty("--score", gri);
     riskGauge.style.setProperty("--gauge-color", colorMap[riskLevel2] || "var(--muted)");
     animateValue(riskScore, parseInt(riskScore.textContent) || 0, gri, 500, (v) => `${v}`);
     riskLevel.textContent = riskLevel2;
-    summaryText.textContent = `GRI ${gri} · ${perClaim.length} 条声明 · ${payload.mode}模式`;
+    summaryText.textContent = t('v2.summary', { gri, count: perClaim.length, mode: payload.mode });
 
     const strip = document.getElementById("classificationStrip");
     if (strip) {
       strip.innerHTML = `
-        <span>语言：${doc.language || "?"}</span>
-        <span>声明：${doc.claim_count || 0} 条</span>
-        <span>层级：${(payload.meta?.stages_run || []).join("→")}</span>
+        <span>${t('v2.langLine', { lang: doc.language || "?" })}</span>
+        <span>${t('v2.claimCountLine', { count: doc.claim_count || 0 })}</span>
+        <span>${t('v2.layerLine', { stages: (payload.meta?.stages_run || []).join("→") })}</span>
       `;
     }
     if (claimProbability) claimProbability.textContent = `${gri}`;
-    if (confidenceScore) confidenceScore.textContent = `${perClaim.length} 条`;
+    if (confidenceScore) confidenceScore.textContent = t('v2.claimCountLine', { count: perClaim.length });
     if (analysisNote) {
       analysisNote.textContent = scoring.document?.risk_level
-        ? `综合绿色声明风险指数（GRI）为 ${gri}，风险等级${riskLevel2}。`
+        ? t('v2.analysisNote', { gri, level: riskLevel2 })
         : "";
     }
 
@@ -946,8 +948,8 @@ function renderV2Result(payload) {
     renderV2TopConcerns(scoring.top_concerns || []);
   } else {
     riskGauge.style.setProperty("--score", 0);
-    riskLevel.textContent = `${payload.mode}模式`;
-    summaryText.textContent = `已完成 ${(payload.meta?.stages_run || []).join("→")} · ${perClaim.length} 条声明（仅快速模式无评分）`;
+    riskLevel.textContent = `${payload.mode} mode`;
+    summaryText.textContent = t('v2.fastSummary', { stages: (payload.meta?.stages_run || []).join("→"), count: perClaim.length });
     renderV2Breakdown(perClaim);
   }
 
@@ -988,13 +990,13 @@ function renderV2Sins(consistency) {
   }
   section.hidden = false;
   const sinLabels = {
-    hidden_tradeoff: "隐藏权衡",
-    no_proof: "无证据",
-    vagueness: "模糊",
-    false_labels: "伪标签",
-    irrelevance: "不相关",
-    lesser_of_evils: "两害取其轻",
-    fibbing: "虚假陈述",
+    hidden_tradeoff: t('v2.sin.hiddenTradeoff'),
+    no_proof: t('v2.sin.noProof'),
+    vagueness: t('v2.sin.vagueness'),
+    false_labels: t('v2.sin.falseLabels'),
+    irrelevance: t('v2.sin.irrelevance'),
+    lesser_of_evils: t('v2.sin.lesserOfEvils'),
+    fibbing: t('v2.sin.fibbing'),
   };
   const sinColors = {
     high: "var(--red)",
@@ -1006,7 +1008,7 @@ function renderV2Sins(consistency) {
     chip.className = "v2-sin-chip";
     chip.style.borderColor = sinColors[sin.severity] || "var(--muted)";
     chip.textContent = `${sinLabels[sin.sin] || sin.sin} (${sin.severity})`;
-    chip.title = `${sin.evidence_count || 0} 条证据`;
+    chip.title = t('v2.sinEvidence', { count: sin.evidence_count || 0 });
     row.appendChild(chip);
   });
 }
@@ -1079,19 +1081,19 @@ function renderV2Claims(perClaim) {
       const details = document.createElement("details");
       details.className = "v2-claim-details";
       const summary = document.createElement("summary");
-      summary.textContent = "结构化详情";
+      summary.textContent = t('v2.structuredDetails');
       details.appendChild(summary);
       const pre = document.createElement("div");
       pre.className = "v2-claim-structure";
       const s = claim.structure;
       const lines = [];
-      if (s.metric?.name) lines.push(`指标: ${s.metric.name} ${s.metric.value || ""} ${s.metric.unit || ""}`);
-      if (s.time_horizon?.target_year) lines.push(`目标年份: ${s.time_horizon.target_year}`);
-      if (s.scope?.boundary) lines.push(`范围: ${s.scope.boundary}`);
-      if (s.baseline?.reference_year) lines.push(`基线: ${s.baseline.reference_year}`);
-      if (s.evidence_cited) lines.push(`引用证据: ${s.evidence_cited}`);
-      if (s.confidence) lines.push(`置信度: ${s.confidence}`);
-      pre.textContent = lines.join("\n") || "无结构化数据";
+      if (s.metric?.name) lines.push(`Metric: ${s.metric.name} ${s.metric.value || ""} ${s.metric.unit || ""}`);
+      if (s.time_horizon?.target_year) lines.push(`Target year: ${s.time_horizon.target_year}`);
+      if (s.scope?.boundary) lines.push(`Scope: ${s.scope.boundary}`);
+      if (s.baseline?.reference_year) lines.push(`Baseline: ${s.baseline.reference_year}`);
+      if (s.evidence_cited) lines.push(`Evidence cited: ${s.evidence_cited}`);
+      if (s.confidence) lines.push(`Confidence: ${s.confidence}`);
+      pre.textContent = lines.join("\n") || t('v2.noStructuredData');
       details.appendChild(pre);
       card.appendChild(details);
     }
@@ -1114,7 +1116,7 @@ function renderV2Consistency(consistency) {
     const card = document.createElement("div");
     card.className = "v2-contradiction-card";
     card.innerHTML = `
-      <strong>${escapeHtml(c.type || "矛盾")}</strong>
+      <strong>${escapeHtml(c.type || t('v2.contradiction'))}</strong>
       <span class="v2-severity" data-level="${escapeHtml(c.severity || "medium")}">${escapeHtml(c.severity || "")}</span>
       <p>${escapeHtml(c.description || "")}</p>
     `;
@@ -1131,28 +1133,28 @@ function renderEmotionAnalysis(emotion) {
   const consistency = Math.round(Number(emotion?.consistency || 0));
   const layersUsed = Number(emotion?.layersUsed || 0);
   const levelLabelMap = {
-    none: "无明显风险",
-    low: "低",
-    medium: "中",
-    high: "高",
+    none: t('emotion.level.none'),
+    low: t('emotion.level.low'),
+    medium: t('emotion.level.medium'),
+    high: t('emotion.level.high'),
   };
   const plainExplainMap = {
-    none: "未检测到明显的情感操控倾向，文本语气较为中性客观。",
-    low: "文本带有轻微的正面情感色彩，属于正常的品牌表达范畴。",
-    medium: "文本存在一定的情感诉求策略，可能试图通过情绪引导影响判断，建议结合具体措辞复核。",
-    high: "文本情感操控倾向显著，大量使用高度情绪化的表达，可能存在误导性渲染。",
+    none: t('emotion.explain.none'),
+    low: t('emotion.explain.low'),
+    medium: t('emotion.explain.medium'),
+    high: t('emotion.explain.high'),
   };
 
   emotionPanel.dataset.level = level;
   emotionScore.textContent = layersUsed ? String(finalScore) : "--";
-  emotionLevel.textContent = layersUsed ? levelLabelMap[level] || "待分析" : "待分析";
+  emotionLevel.textContent = layersUsed ? levelLabelMap[level] || t('progress.labelIdle') : t('progress.labelIdle');
   emotionWarning.hidden = consistency >= 60 || layersUsed < 2;
 
   const plainExplain = document.getElementById("emotionPlainExplain");
   if (plainExplain) {
     plainExplain.textContent = layersUsed
       ? (plainExplainMap[level] || plainExplainMap.none)
-      : "分析完成后，这里会用通俗语言解释文本的情绪倾向。";
+      : t('emotion.explainPending');
   }
 
   updateEmotionBar(emotionRuleBar, emotionRuleValue, breakdown.rule, "0");
@@ -1160,8 +1162,8 @@ function renderEmotionAnalysis(emotion) {
   updateEmotionBar(emotionLlmBar, emotionLlmValue, breakdown.llm, "0");
 
   emotionConsistency.textContent =
-    layersUsed >= 2 ? `一致性：${consistency}%` : layersUsed === 1 ? "一致性：待计算" : "一致性：待分析";
-  emotionLayers.textContent = layersUsed ? `使用层数：${layersUsed}` : "使用层数：待分析";
+    layersUsed >= 2 ? t('emotion.consistencyLabel', { pct: consistency }) : layersUsed === 1 ? t('emotion.consistencyPending') : t('emotion.consistencyAnalyzing');
+  emotionLayers.textContent = layersUsed ? t('emotion.layersLabel', { n: layersUsed }) : t('emotion.layersAnalyzing');
   renderEmotionNlpDetail(emotion?.nlpDetail || null, {
     nlpAvailable: breakdown.nlp !== null,
     layersUsed,
@@ -1170,13 +1172,13 @@ function renderEmotionAnalysis(emotion) {
   const summary = document.getElementById("emotionCollapsibleSummary");
   if (summary) {
     if (!layersUsed) {
-      summary.textContent = "待分析";
+      summary.textContent = t('emotion.summaryPending');
     } else if (level === "high") {
-      summary.textContent = `情绪风险高 · ${finalScore}分 · 建议复核`;
+      summary.textContent = t('emotion.summaryHigh', { score: finalScore });
     } else if (level === "medium") {
-      summary.textContent = `情绪风险中 · ${finalScore}分`;
+      summary.textContent = t('emotion.summaryMedium', { score: finalScore });
     } else {
-      summary.textContent = `情绪风险低 · ${finalScore}分`;
+      summary.textContent = t('emotion.summaryLow', { score: finalScore });
     }
   }
   if (layersUsed > 0) autoExpandCard("emotion");
@@ -1208,7 +1210,7 @@ function renderEmotionNlpDetail(detail, options = {}) {
   if (!detail && !nlpAvailable) {
     emotionNlpDetail.hidden = false;
     const tag = document.createElement("span");
-    tag.textContent = nlpServiceAvailable ? "NLP 层本轮未参与" : "NLP 服务离线";
+    tag.textContent = nlpServiceAvailable ? t('emotion.nlpNotParticipated') : t('emotion.nlpOffline');
     emotionNlpDetail.append(tag);
     return;
   }
@@ -1217,10 +1219,10 @@ function renderEmotionNlpDetail(detail, options = {}) {
   if (!detail) return;
 
   const items = [
-    `ClimateBERT：${detail.climateSentiment || "unknown"}`,
-    `置信度：${percent((detail.sentimentConfidence || 0) * 100)}`,
-    `承诺类型：${detail.commitmentType || "unknown"}`,
-    `具体性：${percent((detail.specificityScore ?? 0) * 100)}`,
+    `ClimateBERT: ${detail.climateSentiment || "unknown"}`,
+    `Confidence: ${percent((detail.sentimentConfidence || 0) * 100)}`,
+    `Commitment type: ${detail.commitmentType || "unknown"}`,
+    `Specificity: ${percent((detail.specificityScore ?? 0) * 100)}`,
   ];
 
   items.forEach((item) => {
@@ -1238,31 +1240,31 @@ function renderLlm(llm, serviceStatus) {
   const summary = document.getElementById("llmCollapsibleSummary");
 
   if (!llm) {
-    llmSummary.textContent = "未配置外部模型 API，当前使用本地规则引擎。";
-    renderList(llmAnnotations, ["暂无外部模型补充结果"]);
-    if (summary) summary.textContent = "未配置外部模型";
+    llmSummary.textContent = t('llm.noApiConfig');
+    renderList(llmAnnotations, [t('llm.noResults')]);
+    if (summary) summary.textContent = t('llm.noConfig');
     return;
   }
 
   if (llm.error) {
-    llmSummary.textContent = `${provider} 调用失败：${llm.error}`;
-    renderList(llmAnnotations, ["本地规则引擎结果仍然可用。"]);
-    if (summary) summary.textContent = `${provider} 调用失败`;
+    llmSummary.textContent = t('llm.callFailed', { provider, error: llm.error });
+    renderList(llmAnnotations, [t('llm.noResults')]);
+    if (summary) summary.textContent = t('llm.callFailedSummary', { provider });
     return;
   }
 
   llmSummary.textContent = llm.enabled
     ? `${provider} · ${llm.model}：${llm.summary}`
-    : `外部模型未启用：${llm.summary}`;
+    : t('llm.notEnabledMsg', { summary: llm.summary });
   renderList(
     llmAnnotations,
-    llm.annotations && llm.annotations.length ? llm.annotations : ["暂无外部模型补充结果"],
+    llm.annotations && llm.annotations.length ? llm.annotations : [t('llm.noResults')],
   );
 
   if (summary) {
     summary.textContent = llm.enabled
       ? `${provider} · ${llm.model}`
-      : "外部模型未启用";
+      : t('llm.notEnabled');
   }
   if (llm.enabled) autoExpandCard("llm");
 }
@@ -1373,29 +1375,33 @@ function renderVerification(verification) {
   const summary = document.getElementById("verificationCollapsibleSummary");
 
   if (!verification) {
-    verificationSummary.textContent = "分析完成后会显示自动识别和外部模型的自我校验结果。";
-    renderList(verificationChecks, ["暂无校验结果"]);
+    verificationSummary.textContent = t('verification.pendingDesc');
+    renderList(verificationChecks, [t('verification.noResults')]);
     verificationChecks.dataset.overall = "idle";
-    if (summary) summary.textContent = "待分析";
+    if (summary) summary.textContent = t('verification.statusPending');
     return;
   }
 
   const summaryMap = {
-    pass: "本次分析的自动识别和外部模型结果整体可采信。",
-    warn: "本次分析存在需要人工留意的环节，建议结合原文复核。",
-    fail: "本次分析出现明显异常，建议先不要直接采信结果。",
+    pass: t('verification.overall.pass'),
+    warn: t('verification.overall.warn'),
+    fail: t('verification.overall.fail'),
   };
 
-  verificationSummary.textContent = summaryMap[verification.overall] || "已完成校验。";
+  verificationSummary.textContent = summaryMap[verification.overall] || t('verification.overallDone');
   verificationChecks.dataset.overall = verification.overall;
   renderList(
     verificationChecks,
     verification.checks.map((check) => `${verificationStatusLabel(check.status)} ${check.title}：${check.message}`),
   );
 
-  const overallLabel = { pass: "通过", warn: "提示", fail: "异常" };
+  const overallLabel = {
+    pass: t('verification.overallLabel.pass'),
+    warn: t('verification.overallLabel.warn'),
+    fail: t('verification.overallLabel.fail'),
+  };
   if (summary) {
-    summary.textContent = `${overallLabel[verification.overall] || "已完成"} · ${verification.checks.length}项校验`;
+    summary.textContent = t('verification.summaryCount', { label: overallLabel[verification.overall] || t('verification.overallLabel.done'), n: verification.checks.length });
   }
   autoExpandCard("verification");
 }
@@ -1405,32 +1411,32 @@ function renderProgress(job) {
 
   const status = job.stalled ? "stalled" : job.status;
   const labelMap = {
-    idle: "待开始",
-    creating: "创建任务",
-    queued: "排队中",
-    running: "分析中",
-    completed: "已完成",
-    failed: "失败",
-    stalled: "耗时偏长",
+    idle: t('progress.labelIdle'),
+    creating: t('progress.labelCreating'),
+    queued: t('progress.labelQueued'),
+    running: t('progress.labelRunning'),
+    completed: t('progress.labelCompleted'),
+    failed: t('progress.labelFailed'),
+    stalled: t('progress.labelStalled'),
   };
 
   progressPanel.dataset.status = status;
-  progressLabel.textContent = labelMap[status] || "分析中";
+  progressLabel.textContent = labelMap[status] || t('progress.labelDefault');
   if (progressStageText) {
     progressStageText.textContent = stageLabel(job.stage);
   }
   progressMessage.textContent = job.stalled
-    ? `${job.message} 当前环节耗时偏长，可能卡在外部模型或网络。`
+    ? t('msg.stalled', { msg: job.message })
     : job.message;
   if (progressTiming) {
     const elapsedMs = Number(job.elapsedMs || 0);
-    progressTiming.textContent = elapsedMs ? formatElapsed(elapsedMs) : "0 秒";
+    progressTiming.textContent = elapsedMs ? formatElapsed(elapsedMs) : t('timing.zero');
   }
   progressFill.style.width = `${clamp(job.progress || 0)}%`;
   engineStatus.textContent =
     status === "completed"
       ? engineStatus.textContent
-      : `分析状态 · ${stageLabel(job.stage)} · ${Math.round(job.progress || 0)}%`;
+      : t('status.analyzing', { stage: stageLabel(job.stage), pct: Math.round(job.progress || 0) });
 }
 
 async function runLegacyAnalysis(requestPayload) {
@@ -1459,7 +1465,7 @@ async function runLegacyAnalysis(requestPayload) {
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(payload?.error || "同步分析接口调用失败");
+      throw new Error(payload?.error || t('msg.syncFailed'));
     }
 
     const normalized = normalizePayload(payload, { allowClientVerification: true });
@@ -1475,14 +1481,14 @@ async function runLegacyAnalysis(requestPayload) {
       stage: "completed",
       progress: 100,
       elapsedMs: Date.now() - currentJobStartedAt,
-      message: "分析完成。当前服务使用同步分析接口返回结果。",
+      message: t('msg.syncFallback'),
     });
-    engineStatus.textContent = `应用已连接 · ${normalized.meta?.engineVersion || "legacy-api"}`;
+    engineStatus.textContent = t('status.connected', { version: normalized.meta?.engineVersion || "legacy-api" });
     applyHighlights(normalized.result?.signals || []);
     loadHistory();
   } catch (error) {
     if (localEngine) {
-      await runLocalAnalysis(requestPayload, error.message || "同步分析接口不可用");
+      await runLocalAnalysis(requestPayload, error.message || t('msg.syncFailed'));
       return;
     }
     throw error;
@@ -1498,8 +1504,8 @@ async function runLocalAnalysis(requestPayload, reason) {
     progress: 42,
     elapsedMs: Date.now() - currentJobStartedAt,
     message: reason
-      ? "后端暂不可用，已切换到浏览器本地分析。"
-      : "正在执行浏览器本地分析。",
+      ? t('msg.localFallback')
+      : t('msg.localAnalyzing'),
   });
   await sleep(180);
   const payload = localEngine.analyze(requestPayload);
@@ -1514,9 +1520,9 @@ async function runLocalAnalysis(requestPayload, reason) {
     stage: "completed",
     progress: 100,
     elapsedMs: Date.now() - currentJobStartedAt,
-    message: "分析完成。当前显示的是浏览器本地分析结果。",
+    message: t('msg.localDone'),
   });
-  engineStatus.textContent = `离线可用 · ${payload.meta.engineVersion}`;
+  engineStatus.textContent = t('status.offline', { version: payload.meta.engineVersion });
   applyHighlights(payload.result?.signals || []);
   renderHistory(localEngine.loadHistory());
 }
@@ -1527,25 +1533,25 @@ function startLegacyProgressTicker() {
       after: 0,
       stage: "classifying",
       progress: 14,
-      message: "正在识别语言、文本场景和行业。",
+      message: t('msg.progressClassifying'),
     },
     {
       after: 900,
       stage: "rule_engine",
       progress: 32,
-      message: "正在运行本地规则引擎。",
+      message: t('msg.progressRuleEngine'),
     },
     {
       after: 2000,
       stage: "llm_enrichment",
       progress: 58,
-      message: "正在请求外部模型补充判断。",
+      message: t('msg.progressLlm'),
     },
     {
       after: 6000,
       stage: "verification",
       progress: 76,
-      message: "正在整理结果并进行自检。",
+      message: t('msg.progressVerification'),
     },
   ];
 
@@ -1572,26 +1578,26 @@ function startLegacyProgressTicker() {
 function renderClassification(classification) {
   if (!classification) {
     classificationStrip.innerHTML = `
-      <span>语言：待识别</span>
-      <span>场景：待识别</span>
-      <span>行业：待识别</span>
+      <span>${t('classification.langPending')}</span>
+      <span>${t('classification.scenePending')}</span>
+      <span>${t('classification.industryPending')}</span>
     `;
     return;
   }
 
   const sourceLabel = (source) => {
-    if (source === "llm") return "AI";
-    if (source === "manual") return "手动";
-    return "关键词";
+    if (source === "llm") return t('classification.sourceAI');
+    if (source === "manual") return t('classification.sourceManual');
+    return t('classification.sourceKeyword');
   };
 
   const contextSource = sourceLabel(classification.context.source);
   const sectorSource = sourceLabel(classification.sector.source);
 
   classificationStrip.innerHTML = `
-    <span>语言：${classification.language.label}</span>
-    <span>场景：${classification.context.label} · ${contextSource}</span>
-    <span>行业：${classification.sector.label} · ${sectorSource}</span>
+    <span>${t('classification.langLine', { lang: classification.language.label })}</span>
+    <span>${t('classification.sceneLine', { label: classification.context.label, source: contextSource })}</span>
+    <span>${t('classification.industryLine', { label: classification.sector.label, source: sectorSource })}</span>
   `;
 }
 
@@ -1620,7 +1626,7 @@ function setBusy(isBusy) {
   const submitButton = form.querySelector("button[type='submit']");
   const resultPanel = document.querySelector(".result-panel");
   submitButton.disabled = isBusy;
-  submitButton.textContent = isBusy ? "分析中" : "开始分析";
+  submitButton.textContent = isBusy ? t('btn.analyzing') : t('btn.startAnalysis');
   if (isBusy) {
     resultPanel.classList.add("analyzing");
     hideWelcome();
@@ -1667,9 +1673,9 @@ async function loadHealth() {
     const payload = await response.json();
     llmAvailable = Boolean(payload.llmService?.enabled);
     nlpServiceAvailable = Boolean(payload.nlpService?.available);
-    engineStatus.textContent = `应用已连接 · ${payload.engineVersion}`;
+    engineStatus.textContent = t('status.connected', { version: payload.engineVersion });
     if (payload.storage?.historyEnabled === false) {
-      engineStatus.textContent += " · 历史已关闭";
+      engineStatus.textContent += t('status.historyDisabled');
     }
     updateHistorySummaryButton();
   } catch {
@@ -1677,7 +1683,7 @@ async function loadHealth() {
       const payload = localEngine.health();
       llmAvailable = Boolean(payload.llmService?.enabled);
       nlpServiceAvailable = Boolean(payload.nlpService?.available);
-      engineStatus.textContent = `离线可用 · ${payload.engineVersion}`;
+      engineStatus.textContent = t('status.offline', { version: payload.engineVersion });
       updateHistorySummaryButton();
       return;
     }
@@ -1691,7 +1697,7 @@ async function loadHealth() {
 function updateHistorySummaryButton() {
   if (!historySummaryButton) return;
   historySummaryButton.disabled = !llmAvailable;
-  historySummaryButton.title = llmAvailable ? "" : "需要配置外部模型 API";
+  historySummaryButton.title = llmAvailable ? "" : t('history.trendSummaryTitle');
   updateDeepAnalyzeButton();
 }
 
@@ -1700,25 +1706,25 @@ async function summarizeHistoryTrends() {
 
   try {
     historySummary.hidden = false;
-    historySummary.textContent = "正在生成趋势分析...";
+    historySummary.textContent = t('msg.progressTrendGenerating');
     const response = await apiFetch(apiUrl("/api/v1/history/summary"), {
       method: "POST",
     });
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(payload?.error || "趋势分析失败");
+      throw new Error(payload?.error || t('msg.trendFailed'));
     }
 
     if (!payload?.summary) {
-      historySummary.textContent = "当前没有可用的趋势总结结果。";
+      historySummary.textContent = t('msg.trendNoResult');
       return;
     }
 
     historySummary.textContent = payload.summary;
   } catch (error) {
     historySummary.hidden = false;
-    historySummary.textContent = error.message || "趋势分析失败。";
+    historySummary.textContent = error.message || t('msg.trendFailedFull');
   }
 }
 
@@ -1742,7 +1748,8 @@ function registerServiceWorker() {
 }
 
 function formatDate(value) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  const locale = window.i18n?.getLang() === 'en' ? 'en-US' : 'zh-CN';
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -1754,76 +1761,56 @@ function formatElapsed(ms) {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
 
   if (totalSeconds < 60) {
-    return `${totalSeconds} 秒`;
+    return t('timing.seconds', { n: totalSeconds });
   }
 
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 
-  return `${minutes} 分 ${seconds} 秒`;
+  return t('timing.minutesSeconds', { m: minutes, s: seconds });
 }
 
 function labelForContext(value) {
-  const labels = {
-    auto: "智能识别",
-    marketing: "营销文案",
-    product: "产品描述",
-    report: "ESG/CSR 报告",
-    social: "社媒内容",
-    press_release: "新闻稿/公关",
-    investor_relations: "投资者关系",
-    policy: "政策/法规",
-    employer_branding: "雇主品牌",
-  };
-  return labels[value] || "通用场景";
+  const key = `context.${value}`;
+  const fallback = t('context.general');
+  const result = t(key);
+  return result === key ? fallback : result;
 }
 
 function labelForSector(value) {
-  const labels = {
-    auto: "智能识别",
-    general: "通用",
-    energy: "能源/化工",
-    fashion: "服装/零售",
-    aviation: "航空/物流",
-    manufacturing: "制造业",
-    finance: "金融",
-    technology: "科技",
-    food_agriculture: "食品/农业",
-    construction_realestate: "建筑/房地产",
-    automotive: "汽车/交通",
-    consumer_goods: "消费品/日化",
-    healthcare: "医药/健康",
-  };
-  return labels[value] || "通用";
+  const key = `sector.${value}`;
+  const fallback = t('sector.default');
+  const result = t(key);
+  return result === key ? fallback : result;
 }
 
 function verificationStatusLabel(status) {
-  if (status === "pass") return "通过";
-  if (status === "warn") return "提示";
-  return "异常";
+  if (status === "pass") return t('verification.statusLabel.pass');
+  if (status === "warn") return t('verification.statusLabel.warn');
+  return t('verification.statusLabel.fail');
 }
 
 function stageLabel(stage) {
-  const labels = {
-    idle: "待开始",
-    creating: "创建任务",
-    queued: "排队中",
-    classifying: "自动识别",
-    scoring: "本地规则评分",
-    "nlp-local": "NLP 情绪模型",
-    "nlp-skip": "跳过 NLP",
-    llm: "外部模型增强",
-    rule_engine: "本地规则评分",
-    rule_preview: "本地结果预览",
-    llm_enrichment: "外部模型增强",
-    verification: "自我校验",
-    saving: "保存记录",
-    fallback: "切换直连模式",
-    completed: "分析完成",
-    failed: "分析失败",
+  const keyMap = {
+    idle: 'stage.idle',
+    creating: 'stage.creating',
+    queued: 'stage.queued',
+    classifying: 'stage.classifying',
+    scoring: 'stage.scoring',
+    "nlp-local": 'stage.nlpLocal',
+    "nlp-skip": 'stage.nlpSkip',
+    llm: 'stage.llm',
+    rule_engine: 'stage.ruleEngine',
+    rule_preview: 'stage.rulePreview',
+    llm_enrichment: 'stage.llmEnrichment',
+    verification: 'stage.verification',
+    saving: 'stage.saving',
+    fallback: 'stage.fallback',
+    completed: 'stage.completed',
+    failed: 'stage.failed',
   };
 
-  return labels[stage] || "分析中";
+  return keyMap[stage] ? t(keyMap[stage]) : t('stage.default');
 }
 
 function escapeHtml(value) {
@@ -1865,18 +1852,18 @@ function apiUrl(pathname) {
 
 function fileModeHint() {
   if (window.location.protocol === "file:") {
-    return `当前页面是文件模式，正在尝试连接本地服务 ${apiBase}`;
+    return t('msg.fileMode', { base: apiBase });
   }
 
-  return "如果卡住太久，建议先检查应用服务和外部模型服务状态。";
+  return t('msg.stalledHint');
 }
 
 function buildUnavailableMessage() {
   if (window.location.protocol === "file:") {
-    return `当前页面是通过文件方式打开的，必须先启动本地应用服务，然后连接到 ${apiBase} 才能调用分析接口。`;
+    return t('msg.fileModeUnavailable', { base: apiBase });
   }
 
-  return "当前应用服务不可用，请确认应用已启动。";
+  return t('msg.serviceUnavailable');
 }
 
 function normalizePayload(payload, { allowClientVerification = false } = {}) {
@@ -1897,11 +1884,11 @@ function buildClientVerification(payload) {
   const llm = payload.llm;
 
   if (classification?.context) {
-    checks.push(buildClientClassificationCheck("文本场景识别", classification.context));
+    checks.push(buildClientClassificationCheck(t('classification.contextSector.context.title'), classification.context));
   }
 
   if (classification?.sector) {
-    checks.push(buildClientClassificationCheck("行业识别", classification.sector));
+    checks.push(buildClientClassificationCheck(t('classification.contextSector.sector.title'), classification.sector));
   }
 
   if (result) {
@@ -1910,14 +1897,14 @@ function buildClientVerification(payload) {
         ? {
             id: "rule_confidence_low",
             status: "warn",
-            title: "本地规则置信度",
-            message: "本地规则对当前文本的把握一般，建议结合原文复核。",
+            title: t('clientVerif.ruleConfidenceLow.title'),
+            message: t('clientVerif.ruleConfidenceLow.msg'),
           }
         : {
             id: "rule_confidence_ok",
             status: "pass",
-            title: "本地规则置信度",
-            message: `本地规则引擎置信度为 ${Math.round(result.confidence)}%。`,
+            title: t('clientVerif.ruleConfidenceOk.title'),
+            message: t('clientVerif.ruleConfidenceOk.msg', { pct: Math.round(result.confidence) }),
           },
     );
   }
@@ -1926,17 +1913,17 @@ function buildClientVerification(payload) {
     checks.push({
       id: "llm_disabled",
       status: "warn",
-      title: "外部模型增强",
+      title: t('clientVerif.llmDisabled.title'),
       message: llm?.error
-        ? `外部模型本轮未正常返回：${llm.error}`
-        : "当前结果没有拿到外部模型增强，主要依据本地规则生成。",
+        ? t('clientVerif.llmError.msg', { error: llm.error })
+        : t('clientVerif.llmDisabled.msg'),
     });
   } else {
     checks.push({
       id: "llm_enabled",
       status: "pass",
-      title: "外部模型增强",
-      message: `已启用 ${llm.provider} · ${llm.model}。`,
+      title: t('clientVerif.llmEnabled.title'),
+      message: t('clientVerif.llmEnabled.msg', { provider: llm.provider, model: llm.model }),
     });
 
     if (Number.isFinite(llm.adjustedRisk) && result) {
@@ -1944,11 +1931,11 @@ function buildClientVerification(payload) {
       checks.push({
         id: "llm_gap",
         status: gap > 25 ? "warn" : "pass",
-        title: "外部模型一致性",
+        title: t('clientVerif.llmGap.title'),
         message:
           gap > 25
-            ? `外部模型与本地规则分差较大（${gap} 分），建议人工复核。`
-            : `外部模型与本地规则分差可接受（${gap} 分）。`,
+            ? t('clientVerif.llmGap.warnMsg', { gap })
+            : t('clientVerif.llmGap.okMsg', { gap }),
       });
     }
   }
@@ -1968,14 +1955,14 @@ function buildClientVerification(payload) {
 
 function buildAnalysisNote(result) {
   if (result.decisionMode === "non-green-claim-baseline") {
-    return `当前文本的绿色声明概率只有 ${Math.round(result.claimProb)}%，低于 ${result.claimThreshold || 42}% 的识别阈值，所以系统返回的是基线低风险分 ${Math.round(result.risk)}%，不是完整 greenwashing 高风险判断。`;
+    return t('analysisNote.nonGreen', { prob: Math.round(result.claimProb), threshold: result.claimThreshold || 42, risk: Math.round(result.risk) });
   }
 
   if (result.decisionMode === "green-claim-risk") {
-    return `当前文本已被识别为绿色声明，系统进入完整风险评分流程，再结合证据、模糊表达、承诺落差和外部模型结果给出最终分数。`;
+    return t('analysisNote.greenClaim');
   }
 
-  return "分析完成后会显示这次分数是完整风险判断，还是非绿色声明基线分。";
+  return t('analysisNote.default');
 }
 
 function buildClientClassificationCheck(title, part) {
@@ -1986,7 +1973,7 @@ function buildClientClassificationCheck(title, part) {
       id: `${title}-manual`,
       status: "pass",
       title,
-      message: "当前结果使用了人工覆盖，不依赖自动识别。",
+      message: t('clientVerif.manualOverride'),
     };
   }
 
@@ -1995,7 +1982,7 @@ function buildClientClassificationCheck(title, part) {
       id: `${title}-low`,
       status: "warn",
       title,
-      message: `自动识别置信度偏低（${Math.round(confidence * 100)}%），建议人工复核。`,
+      message: t('clientVerif.lowConfidence', { pct: Math.round(confidence * 100) }),
     };
   }
 
@@ -2003,7 +1990,7 @@ function buildClientClassificationCheck(title, part) {
     id: `${title}-ok`,
     status: "pass",
     title,
-    message: `自动识别置信度正常（${Math.round(confidence * 100)}%）。`,
+    message: t('clientVerif.okConfidence', { pct: Math.round(confidence * 100) }),
   };
 }
 
@@ -2037,6 +2024,40 @@ function applyTheme(theme) {
   if (metaTheme) {
     metaTheme.content = theme === "dark" ? "#121817" : "#177e89";
   }
+}
+
+function rerenderDynamicI18n() {
+  // Re-render UI elements that were set with t() dynamically.
+  // Static data-i18n elements are handled by applyStaticI18n().
+  if (latestAnalysis) {
+    const payload = normalizePayload(latestAnalysis);
+    if (payload?.result) renderResult(payload.result);
+    renderLlm(payload?.llm || null, payload?.meta?.llmService || null);
+    renderLlmDetails(payload?.llm || null);
+    renderVerification(payload?.verification || null);
+  }
+  loadHistory();
+  // Re-render classification status
+  if (smartClassificationState) {
+    const contextLabel = labelForContext(contextType?.value);
+    const sectorLabel = labelForSector(sector?.value);
+    const methodLabel = t('classification.sourceAI');
+    setClassificationStatus(t('classification.aiIdentified', { method: methodLabel, context: contextLabel, sector: sectorLabel }), "success");
+  } else {
+    setClassificationStatus(t('classification.autoHint'));
+  }
+  updateMasterButton();
+  updateDeepAnalyzeButton();
+}
+
+function setupLangToggle() {
+  const langToggle = document.getElementById('langToggle');
+  if (!langToggle) return;
+  langToggle.addEventListener('click', () => {
+    const next = window.i18n.getLang() === 'zh' ? 'en' : 'zh';
+    window.i18n.setLang(next);
+    rerenderDynamicI18n();
+  });
 }
 
 function setupPdfUpload() {
@@ -2085,18 +2106,18 @@ async function handlePdfFile(file) {
   if (!pdfUploadZone || !pdfUploadStatus) return;
 
   if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-    setPdfUploadState("error", "请上传 PDF 格式的文件。");
+    setPdfUploadState("error", t('pdf.errorFormat'));
     setTimeout(() => setPdfUploadState("idle"), 3000);
     return;
   }
 
   if (file.size > 20 * 1024 * 1024) {
-    setPdfUploadState("error", "文件过大，请上传 20MB 以内的 PDF。");
+    setPdfUploadState("error", t('pdf.errorSize'));
     setTimeout(() => setPdfUploadState("idle"), 3000);
     return;
   }
 
-  setPdfUploadState("processing", "正在提取文字...");
+  setPdfUploadState("processing", t('pdf.processing'));
 
   try {
     const response = await apiFetch(apiUrl("/api/v1/upload-pdf"), {
@@ -2111,18 +2132,18 @@ async function handlePdfFile(file) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(data?.error || "PDF 文字提取失败");
+      throw new Error(data?.error || t('pdf.extractFailed'));
     }
 
     resetClassificationControls({ resetSelects: true });
     textArea.value = data.text;
     updatePdfUploadVisibility();
     renderDocument(data.document || null);
-    const engineLabel = data.engine === "poppler" ? "系统引擎" : "JS 引擎";
+    const engineLabel = data.engine === "poppler" ? t('pdf.engineSystem') : t('pdf.engineJs');
     const warnings = data.warnings || [];
-    let statusMsg = `已提取 ${data.text.length} 个字符 · ${engineLabel}`;
+    let statusMsg = t('pdf.extracted', { chars: data.text.length, engine: engineLabel });
     if (warnings.length) {
-      statusMsg += " · 已优化长文档";
+      statusMsg += t('pdf.optimized');
     }
     statusMsg += ` · ${file.name}`;
     setPdfUploadState("success", statusMsg);
@@ -2132,7 +2153,7 @@ async function handlePdfFile(file) {
 
     setTimeout(() => setPdfUploadState("idle"), warnings.length ? 8000 : 5000);
   } catch (error) {
-    setPdfUploadState("error", error.message || "提取失败，请重试。");
+    setPdfUploadState("error", error.message || t('pdf.extractError'));
     setTimeout(() => setPdfUploadState("idle"), 5000);
   }
 }
@@ -2199,7 +2220,7 @@ function renderDocument(doc) {
       if (block.page && block.page !== lastPdfPage) {
         const marker = document.createElement("span");
         marker.className = "doc-pdf-page-marker";
-        marker.textContent = `第 ${block.page} 页`;
+        marker.textContent = t('docviewer.pageMarker', { n: block.page });
         pageEl.append(marker);
         lastPdfPage = block.page;
       }
@@ -2214,7 +2235,7 @@ function renderDocument(doc) {
         wrapper.className = "doc-table";
         const label = document.createElement("span");
         label.className = "doc-table-label";
-        label.textContent = "表格内容";
+        label.textContent = t('docviewer.tableLabel');
         wrapper.append(label);
         const pre = document.createElement("pre");
         pre.textContent = block.rows.join("\n");
@@ -2226,7 +2247,7 @@ function renderDocument(doc) {
     if (total > 1) {
       const num = document.createElement("p");
       num.className = "doc-page-number";
-      num.textContent = `${i + 1} / ${total}`;
+      num.textContent = t('docviewer.pageNumber', { current: i + 1, total });
       pageEl.append(num);
     }
 
@@ -2382,7 +2403,7 @@ textArea.addEventListener("input", () => {
       scheduleSmartClassification();
       return;
     }
-    setClassificationStatus("使用当前手动选择的场景和行业");
+    setClassificationStatus(t('classification.manualHint'));
   });
 });
 
@@ -2421,11 +2442,11 @@ function updateDeepAnalyzeButton() {
   const hasResult = !!latestAnalysis?.result;
   btn.disabled = !llmAvailable || !hasResult;
   if (!llmAvailable) {
-    btn.title = "需配置外部模型后启用";
+    btn.title = t('deep.btnNeedsModel');
   } else if (!hasResult) {
-    btn.title = "请先运行基础分析";
+    btn.title = t('deep.btnNeedsAnalysis');
   } else {
-    btn.title = "运行 M3/M4/M5 深度分析";
+    btn.title = t('deep.btnReady');
   }
 }
 
@@ -2458,7 +2479,7 @@ async function runDeepAnalysis() {
     if (section) {
       section.hidden = false;
       const reason = document.getElementById("deepConfidenceReason");
-      if (reason) reason.textContent = `深度分析失败: ${err.message}`;
+      if (reason) reason.textContent = t('deep.errorPrefix') + err.message;
     }
   } finally {
     btn.classList.remove("is-loading");
@@ -2477,7 +2498,7 @@ function renderDeepResult(data) {
     const meta = data._meta || {};
     prov.textContent = meta.enabled
       ? `${meta.provider || ""}${meta.model ? " · " + meta.model : ""}`
-      : "未启用外部模型";
+      : t('deep.noModel');
   }
 
   // Gate
@@ -2506,18 +2527,18 @@ function renderDeepResult(data) {
   };
   renderModule("M3", modules.M3_vagueness, (m) => {
     const ratio = m.vagueness_ratio != null ? `${Math.round(m.vagueness_ratio * 100)}%` : "—";
-    const vw = (m.vague_words_found || []).slice(0, 4).join("、") || "无";
-    return `模糊词比 ${ratio} · 命中：${vw}`;
+    const vw = (m.vague_words_found || []).slice(0, 4).join("、") || t('deep.m3NoWords');
+    return t('deep.m3Detail', { ratio, words: vw });
   });
   renderModule("M4", modules.M4_promotional_framing, (m) => {
     const ps = (m.positive_signals || []).length;
     const bs = (m.balance_signals || []).length;
-    return `正向信号 ${ps} 个 · 平衡信号 ${bs} 个`;
+    return t('deep.m4Detail', { ps, bs });
   });
   renderModule("M5", modules.M5_commitment_action, (m) => {
     const avg = m.average_level != null ? m.average_level.toFixed(1) : "—";
     const worst = m.worst_level != null ? m.worst_level : "—";
-    return `平均等级 ${avg} · 最低 ${worst} · L1 占比 ${Math.round((m.level1_share || 0) * 100)}%`;
+    return t('deep.m5Detail', { avg, worst, pct: Math.round((m.level1_share || 0) * 100) });
   });
 
   // Scoring
@@ -2557,7 +2578,7 @@ function renderDeepResult(data) {
       if (c.specificity) {
         const tagSpec = document.createElement("span");
         tagSpec.className = "claim-type-tag";
-        tagSpec.textContent = `具体度：${c.specificity}`;
+        tagSpec.textContent = t('deep.specificity', { value: c.specificity });
         meta.appendChild(tagSpec);
       }
       card.appendChild(meta);
@@ -2576,7 +2597,7 @@ function renderDeepResult(data) {
     if (!claims.length) {
       const empty = document.createElement("p");
       empty.className = "empty-state";
-      empty.textContent = "未识别出可分析的声明";
+      empty.textContent = t('deep.noClaims');
       listEl.appendChild(empty);
     }
   }
@@ -2594,7 +2615,7 @@ function renderDeepResult(data) {
     });
     if (!(summary.key_findings || []).length) {
       const li = document.createElement("li");
-      li.textContent = "暂无";
+      li.textContent = t('deep.noResults');
       findingsEl.appendChild(li);
     }
   }
@@ -2607,7 +2628,7 @@ function renderDeepResult(data) {
     });
     if (!(summary.recommendations || []).length) {
       const li = document.createElement("li");
-      li.textContent = "暂无";
+      li.textContent = t('deep.noResults');
       recsEl.appendChild(li);
     }
   }
@@ -2652,7 +2673,7 @@ async function loadSettings() {
       const keyEl = document.getElementById(`settings${cap}Key`);
       const modelEl = document.getElementById(`settings${cap}Model`);
       if (statusEl) {
-        statusEl.textContent = info.configured ? "已配置" : "未配置";
+        statusEl.textContent = info.configured ? t('settings.configured') : t('settings.unconfigured');
         statusEl.classList.toggle("is-configured", !!info.configured);
       }
       if (keyEl) keyEl.value = ""; // always start blank
@@ -2664,7 +2685,7 @@ async function loadSettings() {
   } catch (err) {
     const msg = document.getElementById("settingsMessage");
     if (msg) {
-      msg.textContent = `加载设置失败: ${err.message}`;
+      msg.textContent = t('settings.loadFailed', { error: err.message });
       msg.setAttribute("data-status", "err");
     }
     return null;
@@ -2701,7 +2722,7 @@ function closeSettingsDrawer() {
 async function saveAndTestSettings() {
   const msg = document.getElementById("settingsMessage");
   const saveBtn = document.getElementById("settingsSaveButton");
-  if (msg) { msg.textContent = "保存中..."; msg.setAttribute("data-status", "info"); }
+  if (msg) { msg.textContent = t('settings.saving'); msg.setAttribute("data-status", "info"); }
   if (saveBtn) saveBtn.disabled = true;
 
   // Build updates payload
@@ -2736,25 +2757,25 @@ async function saveAndTestSettings() {
     await loadSettings();
 
     if (provider === "none") {
-      if (msg) { msg.textContent = "✓ 已保存 — 未使用外部 Provider"; msg.setAttribute("data-status", "ok"); }
+      if (msg) { msg.textContent = t('settings.savedNoProvider'); msg.setAttribute("data-status", "ok"); }
     } else {
       // Test connection
-      if (msg) { msg.textContent = "保存成功，测试连接中..."; msg.setAttribute("data-status", "info"); }
+      if (msg) { msg.textContent = t('settings.savedTesting'); msg.setAttribute("data-status", "info"); }
       try {
         const testResp = await fetch(apiUrl("/llm/test"), { method: "POST" });
         const testBody = await testResp.json();
         if (testResp.ok && testBody.ok) {
-          if (msg) { msg.textContent = `✓ 已保存，连接 ${provider} 成功`; msg.setAttribute("data-status", "ok"); }
+          if (msg) { msg.textContent = t('settings.savedConnected', { provider }); msg.setAttribute("data-status", "ok"); }
         } else {
-          if (msg) { msg.textContent = `✓ 已保存；测试失败: ${testBody.error || "未知错误"}`; msg.setAttribute("data-status", "err"); }
+          if (msg) { msg.textContent = t('settings.savedTestFailed', { error: testBody.error || "unknown" }); msg.setAttribute("data-status", "err"); }
         }
       } catch (testErr) {
-        if (msg) { msg.textContent = `✓ 已保存；测试出错: ${testErr.message}`; msg.setAttribute("data-status", "err"); }
+        if (msg) { msg.textContent = t('settings.savedTestError', { error: testErr.message }); msg.setAttribute("data-status", "err"); }
       }
     }
     loadHealth();
   } catch (err) {
-    if (msg) { msg.textContent = `保存失败: ${err.message}`; msg.setAttribute("data-status", "err"); }
+    if (msg) { msg.textContent = t('settings.saveFailed', { error: err.message }); msg.setAttribute("data-status", "err"); }
   } finally {
     if (saveBtn) saveBtn.disabled = false;
   }
@@ -2905,7 +2926,7 @@ function setupCardCollapse() {
     b.className = "card-collapse-btn";
     b.type = "button";
     b.setAttribute("aria-expanded", "true");
-    b.setAttribute("aria-label", "折叠");
+    b.setAttribute("aria-label", t('card.collapse'));
     const s = document.createElement("span");
     s.className = "card-collapse-caret";
     s.textContent = "▾";
@@ -2959,7 +2980,7 @@ function toggleCard(card, forceExpanded) {
   const btn = card.querySelector(".card-collapse-btn");
   if (btn) {
     btn.setAttribute("aria-expanded", String(!collapse));
-    btn.setAttribute("aria-label", collapse ? "展开" : "折叠");
+    btn.setAttribute("aria-label", collapse ? t('card.expand') : t('card.collapse'));
   }
 
   persistCardState(card.dataset.cardId, collapse);
@@ -2988,7 +3009,7 @@ function restoreStates(entries, storageKey) {
     if (stored[id]) {
       card.classList.add("is-collapsed");
       btn.setAttribute("aria-expanded", "false");
-      btn.setAttribute("aria-label", "展开");
+      btn.setAttribute("aria-label", t('card.expand'));
     }
   });
 }
@@ -3021,7 +3042,7 @@ function updateMasterButton() {
   all.forEach((c) => {
     if (!c.classList.contains("is-collapsed")) exp++;
   });
-  mb.textContent = exp >= all.length / 2 ? "⊟ 全部折叠" : "⊞ 全部展开";
+  mb.textContent = exp >= all.length / 2 ? `⊟ ${t('btn.collapseAll')}` : `⊞ ${t('btn.expandAll')}`;
 }
 
 // Auto-expand a card by its data-card-id (used after analysis adds details)
@@ -3045,9 +3066,9 @@ function resetAllCollapsibles() {
   const emotionSummary = document.getElementById("emotionCollapsibleSummary");
   const llmSummary = document.getElementById("llmCollapsibleSummary");
   const verificationSummary = document.getElementById("verificationCollapsibleSummary");
-  if (emotionSummary) emotionSummary.textContent = "待分析";
-  if (llmSummary) llmSummary.textContent = "未配置外部模型";
-  if (verificationSummary) verificationSummary.textContent = "待分析";
+  if (emotionSummary) emotionSummary.textContent = t('emotion.summaryPending');
+  if (llmSummary) llmSummary.textContent = t('llm.noConfig');
+  if (verificationSummary) verificationSummary.textContent = t('verification.statusPending');
 }
 
 form.addEventListener("submit", (event) => {
@@ -3079,7 +3100,7 @@ clearButton.addEventListener("click", () => {
   latestAnalysis = null;
   currentDocument = null;
   resetClassificationControls({ resetSelects: true });
-  setClassificationStatus("添加内容后自动判断场景和行业");
+  setClassificationStatus(t('classification.autoHint'));
   exportButton.disabled = true;
   if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.clear();
   if (docViewer) docViewer.hidden = true;
@@ -3094,7 +3115,7 @@ clearButton.addEventListener("click", () => {
     status: "idle",
     stage: "idle",
     progress: 0,
-    message: "输入文本后开始分析。",
+    message: t('progress.idle'),
   });
   resetAllCollapsibles();
   updatePdfUploadVisibility();
@@ -3103,7 +3124,7 @@ clearButton.addEventListener("click", () => {
 
 exportButton.addEventListener("click", exportLatestAnalysis);
 clearHistoryButton.addEventListener("click", () => {
-  if (confirm("确定要清空所有检测历史吗？此操作不可撤销。")) {
+  if (confirm(t('history.clearConfirm'))) {
     clearHistory();
   }
 });
@@ -3112,9 +3133,9 @@ copyRewriteButton.addEventListener("click", async () => {
   if (!rewriteContent.textContent) return;
   try {
     await navigator.clipboard.writeText(rewriteContent.textContent);
-    copyRewriteButton.textContent = "已复制";
+    copyRewriteButton.textContent = t('btn.copied');
     setTimeout(() => {
-      copyRewriteButton.textContent = "复制改写文本";
+      copyRewriteButton.textContent = t('btn.copyRewrite');
     }, 1600);
   } catch {}
 });
@@ -3127,7 +3148,7 @@ renderProgress({
   status: "idle",
   stage: "idle",
   progress: 0,
-  message: "输入文本后开始分析。",
+  message: t('progress.idle'),
 });
 exportButton.disabled = true;
 setupResultTabs();
@@ -3140,3 +3161,5 @@ loadHistory();
 registerServiceWorker();
 setupPdfUpload();
 setupThemeToggle();
+setupLangToggle();
+if (window.i18n) window.i18n.applyStaticI18n();

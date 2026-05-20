@@ -365,6 +365,37 @@
   content: "☀️";
 }
 
+.lang-toggle {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-secondary);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.lang-toggle:hover {
+  background: #f4f8f7;
+  color: var(--ink);
+}
+
+[data-theme="dark"] .lang-toggle {
+  background: rgba(26, 35, 32, 0.85);
+}
+
+[data-theme="dark"] .lang-toggle:hover {
+  background: #25322e;
+}
+
 * {
   box-sizing: border-box;
 }
