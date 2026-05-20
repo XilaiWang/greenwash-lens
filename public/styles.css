@@ -113,8 +113,27 @@
   background: var(--surface);
 }
 
+[data-theme="dark"] .primary-button {
+  background: var(--teal);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .primary-button:hover {
+  background: color-mix(in srgb, var(--teal) 80%, #fff 20%);
+}
+
+[data-theme="dark"] .primary-button:active {
+  background: color-mix(in srgb, var(--teal) 88%, #000 12%);
+}
+
 [data-theme="dark"] .primary-button:disabled {
   background: var(--surface-strong);
+  color: var(--muted);
+}
+
+[data-theme="dark"] select,
+[data-theme="dark"] .mode-select {
+  color-scheme: dark;
 }
 
 [data-theme="dark"] .secondary-button {
@@ -511,12 +530,39 @@ h1 {
   min-width: 0;
 }
 
-.input-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: stretch;
-  min-height: 360px;
+.input-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.input-tab-btn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.input-tab-btn.is-active,
+.input-tab-btn[aria-selected="true"] {
+  background: var(--teal);
+  color: #ffffff;
+  border-color: var(--teal);
+}
+
+.input-tab-btn:hover:not(.is-active) {
+  background: var(--surface-strong);
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.input-tab-panel[hidden] {
+  display: none;
 }
 
 label,
@@ -568,8 +614,16 @@ textarea:focus-visible {
 .button-row {
   grid-column: 1 / -1;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  flex-shrink: 0;
 }
 
 .mode-select {
@@ -620,7 +674,8 @@ button:focus-visible {
 }
 
 .primary-button {
-  width: 100%;
+  flex: 1;
+  min-width: 120px;
   min-height: 50px;
   background: var(--ink);
   color: #ffffff;

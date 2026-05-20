@@ -2060,6 +2060,28 @@ function setupLangToggle() {
   });
 }
 
+function setupInputTabs() {
+  const tabs = document.querySelectorAll(".input-tab-btn");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabs.forEach((t) => {
+        t.classList.remove("is-active");
+        t.setAttribute("aria-selected", "false");
+        const panel = document.getElementById(t.getAttribute("aria-controls"));
+        if (panel) panel.hidden = true;
+      });
+      tab.classList.add("is-active");
+      tab.setAttribute("aria-selected", "true");
+      const panel = document.getElementById(tab.getAttribute("aria-controls"));
+      if (panel) panel.hidden = false;
+    });
+  });
+}
+
+function switchToTextTab() {
+  document.getElementById("inputTabText")?.click();
+}
+
 function setupPdfUpload() {
   if (!pdfUploadZone || !pdfFileInput || !pdfUploadStatus) return;
 
@@ -2137,6 +2159,7 @@ async function handlePdfFile(file) {
 
     resetClassificationControls({ resetSelects: true });
     textArea.value = data.text;
+    switchToTextTab();
     updatePdfUploadVisibility();
     renderDocument(data.document || null);
     const engineLabel = data.engine === "poppler" ? t('pdf.engineSystem') : t('pdf.engineJs');
@@ -3163,6 +3186,7 @@ loadHealth();
 loadHistory();
 registerServiceWorker();
 setupPdfUpload();
+setupInputTabs();
 setupThemeToggle();
 setupLangToggle();
 if (window.i18n) window.i18n.applyStaticI18n();

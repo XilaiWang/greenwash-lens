@@ -33,18 +33,6 @@
 
       <section class="workspace" aria-label="检测工作区" data-i18n-aria="workspace.ariaLabel">
         <form class="input-panel" id="analysisForm" data-collapsible data-card-id="input" data-card-title="输入">
-          <section class="start-guide" aria-label="开始指引" data-i18n-aria="guide.startLabel">
-            <div>
-              <p class="metric-label" data-i18n="guide.startLabel">开始方式</p>
-              <h2 data-i18n="guide.heading">上传 PDF 或粘贴文本</h2>
-            </div>
-            <div class="guide-steps" aria-label="使用流程" data-i18n-aria="guide.stepsLabel">
-              <span data-i18n="guide.step1">1 添加内容</span>
-              <span data-i18n="guide.step2">2 自动识别</span>
-              <span data-i18n="guide.step3">3 开始分析</span>
-            </div>
-          </section>
-
           <div class="guidance-row">
             <div class="guidance-heading">
               <p class="guidance-label" data-i18n="field.smartRecognition">智能识别</p>
@@ -84,7 +72,26 @@
             </div>
           </div>
 
-          <div class="input-split">
+          <div class="input-tabs" role="tablist" aria-label="输入方式">
+            <button class="input-tab-btn is-active" id="inputTabText" role="tab" aria-selected="true" aria-controls="inputPanelText" type="button">📝 <span data-i18n="input.tabText">粘贴文本</span></button>
+            <button class="input-tab-btn" id="inputTabPdf" role="tab" aria-selected="false" aria-controls="inputPanelPdf" type="button">📄 <span data-i18n="input.tabPdf">上传 PDF</span></button>
+          </div>
+
+          <div class="input-tab-panel" id="inputPanelText" role="tabpanel" aria-labelledby="inputTabText">
+            <div class="text-field">
+              <label for="claimText" data-i18n="pdf.claimTextLabel">待检测文本</label>
+              <textarea
+                id="claimText"
+                name="claimText"
+                rows="14"
+                spellcheck="false"
+                placeholder="粘贴一段绿色、环保、低碳、ESG 或可持续相关表述"
+                data-i18n-placeholder="pdf.placeholder"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="input-tab-panel" id="inputPanelPdf" role="tabpanel" aria-labelledby="inputTabPdf" hidden>
             <div class="pdf-upload-zone" id="pdfUploadZone" role="button" tabindex="0" aria-label="上传 PDF 文件" data-i18n-aria="pdf.ariaLabel">
               <span class="pdf-upload-icon" aria-hidden="true">&#128196;</span>
               <span class="pdf-upload-kicker" data-i18n="pdf.kicker">PDF 文件</span>
@@ -94,18 +101,6 @@
               <span class="pdf-upload-hint" data-i18n="pdf.hint">提取文本后会自动识别场景和行业</span>
               <span class="pdf-upload-status" id="pdfUploadStatus" hidden></span>
               <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" hidden />
-            </div>
-
-            <div class="text-field">
-              <label for="claimText" data-i18n="pdf.claimTextLabel">待检测文本</label>
-              <textarea
-                id="claimText"
-                name="claimText"
-                rows="13"
-                spellcheck="false"
-                placeholder="粘贴一段绿色、环保、低碳、ESG 或可持续相关表述"
-                data-i18n-placeholder="pdf.placeholder"
-              ></textarea>
             </div>
           </div>
 
@@ -118,8 +113,7 @@
               <option value="standard" data-i18n="field.modeStandard">标准（+LLM 结构化）</option>
               <option value="comprehensive" data-i18n="field.modeComprehensive">全面（+认证+七宗罪+GRI）</option>
             </select>
-          </div>
-          <div class="button-row-secondary">
+            <span class="btn-divider" aria-hidden="true"></span>
             <button class="secondary-button" id="sampleButton" type="button" data-i18n="btn.sample">示例</button>
             <button class="ghost-button" id="clearButton" type="button" data-i18n="btn.clear">清空</button>
             <button class="ghost-button" id="exportButton" type="button" disabled data-i18n="btn.exportJson">导出 JSON</button>
