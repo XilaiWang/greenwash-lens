@@ -402,8 +402,8 @@ h1 {
   display: grid;
   grid-template-columns: 1fr;
   grid-template-areas:
-    "result"
-    "input";
+    "input"
+    "result";
   gap: 20px;
   align-items: start;
   margin-bottom: 20px;
@@ -411,9 +411,9 @@ h1 {
 
 .workspace.has-document {
   grid-template-areas:
-    "result"
+    "input"
     "doc"
-    "input";
+    "result";
 }
 
 .input-panel,
