@@ -187,6 +187,12 @@ async function analyzeText() {
     }
 
     const mode = resolveAnalysisMode();
+    // v2/fast without LLM has no scoring (gauge stays at 0%) — fall back to v1 rule engine
+    if (mode === "fast" && !llmAvailable) {
+      await runV1Analysis(requestPayload);
+      return;
+    }
+
     const stopTicker = startV2ProgressTicker(mode);
 
     try {
