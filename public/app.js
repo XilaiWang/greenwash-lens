@@ -268,7 +268,13 @@ async function runV1Analysis(requestPayload) {
     }
     currentJobId = job.id;
     renderProgress(job);
-    await pollJob(job.id, requestPayload);
+    const stopTicker = startLegacyProgressTicker();
+    try {
+      await sleep(JOB_POLL_INTERVAL_MS);
+      await pollJob(job.id, requestPayload);
+    } finally {
+      stopTicker();
+    }
   } catch (err) {
     await runLegacyAnalysis(requestPayload);
   }
