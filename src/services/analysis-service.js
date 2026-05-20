@@ -1,6 +1,6 @@
 const { ENGINE_VERSION, scoreText } = require("../greenwashing-engine");
 const { classifyText } = require("../text-classifier");
-const { classifyWithLLM, enrichAnalysis, getServiceStatus } = require("./llm-service");
+const { classifyWithLLM, enrichAnalysis, enrichAnalysisSplit, getServiceStatus, getSecondaryServiceStatus } = require("./llm-service");
 const { callNlpService, NLP_SERVICE_URL } = require("./nlp-service-client");
 const { fuseEmotionScores } = require("./emotion-fusion");
 const { addHistoryItem, createHistoryItem } = require("../history-store");
@@ -80,14 +80,18 @@ async function analyzeText({
   const nlpResultPromise = callNlpService(clean, classification.language.value).catch(() => null);
 
   const llmStatus = getServiceStatus();
+  const secondaryStatus = getSecondaryServiceStatus();
+  const splitEnabled = llmStatus.enabled && secondaryStatus.enabled;
   onProgress?.({
     stage: "llm",
     progress: llmStatus.enabled ? 68 : 76,
-    message: llmStatus.enabled
-      ? `正在请求 ${llmStatus.provider} 外部模型补充判断。`
-      : "外部模型未启用，跳过增强判断。",
+    message: splitEnabled
+      ? `正在并行请求 ${llmStatus.provider} 和 ${secondaryStatus.provider} 双模型分工分析。`
+      : llmStatus.enabled
+        ? `正在请求 ${llmStatus.provider} 外部模型补充判断。`
+        : "外部模型未启用，跳过增强判断。",
   });
-  const llm = await enrichAnalysis({
+  const llm = await enrichAnalysisSplit({
     text: clean,
     classification,
     result,

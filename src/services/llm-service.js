@@ -744,6 +744,130 @@ Text:
 ${text.slice(0, 3000)}`;
 }
 
+function getSecondaryServiceStatus() {
+  const provider = normalizeProvider(process.env.LLM_SECONDARY_PROVIDER);
+  const apiKey = getProviderApiKey(provider);
+  return {
+    provider,
+    enabled: Boolean(provider !== "none" && apiKey),
+    model: getProviderModel(provider),
+  };
+}
+
+function splitTextAtMidpoint(text) {
+  if (text.length < 200) return [text, ""];
+  const mid = Math.floor(text.length / 2);
+  // Prefer paragraph break near midpoint
+  const para = text.indexOf("\n\n", mid);
+  if (para !== -1 && para < text.length * 0.8) {
+    return [text.slice(0, para).trim(), text.slice(para + 2).trim()];
+  }
+  // Fall back to sentence-ending punctuation
+  for (let i = mid; i < Math.min(text.length, mid + 300); i++) {
+    if ("。.！!？?".includes(text[i])) {
+      return [text.slice(0, i + 1).trim(), text.slice(i + 1).trim()];
+    }
+  }
+  // Last resort: space
+  const sp = text.indexOf(" ", mid);
+  if (sp !== -1) return [text.slice(0, sp).trim(), text.slice(sp + 1).trim()];
+  return [text.slice(0, mid), text.slice(mid)];
+}
+
+async function callEnrichWithProvider(status, input) {
+  try {
+    const prompt = buildPrompt(input);
+    const rawText = await callProvider({ provider: status.provider, model: status.model, prompt });
+    const parsed = parseModelJson(rawText);
+    return {
+      enabled: true,
+      provider: status.provider,
+      model: status.model,
+      summary: parsed.summary || rawText,
+      annotations: Array.isArray(parsed.annotations) ? parsed.annotations : [],
+      adjustedRisk: Number.isFinite(parsed.adjustedRisk) ? parsed.adjustedRisk : null,
+      evidenceStatus: parsed.evidenceStatus || "unknown",
+      vagueExplanations: Array.isArray(parsed.vagueExplanations) ? parsed.vagueExplanations : [],
+      contradictions: Array.isArray(parsed.contradictions) ? parsed.contradictions : [],
+      credibilityNotes: Array.isArray(parsed.credibilityNotes) ? parsed.credibilityNotes : [],
+      rewriteSuggestion: parsed.rewriteSuggestion || null,
+      emotionAnalysis: normalizeEmotionAnalysis(parsed.emotionAnalysis),
+      rawText,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      enabled: false, provider: status.provider, model: status.model,
+      summary: "", annotations: [], vagueExplanations: [], contradictions: [],
+      credibilityNotes: [], rewriteSuggestion: null, emotionAnalysis: null,
+      adjustedRisk: null, evidenceStatus: "unknown", error: err.message,
+    };
+  }
+}
+
+function mergeLlmResults(r1, r2, t1, t2) {
+  const w1 = t1.length / (t1.length + t2.length);
+  const w2 = 1 - w1;
+
+  let adjustedRisk = null;
+  if (r1.adjustedRisk !== null && r2.adjustedRisk !== null) {
+    adjustedRisk = Math.round(r1.adjustedRisk * w1 + r2.adjustedRisk * w2);
+  } else {
+    adjustedRisk = r1.adjustedRisk ?? r2.adjustedRisk;
+  }
+
+  let emotionAnalysis = null;
+  if (r1.emotionAnalysis || r2.emotionAnalysis) {
+    const e1 = r1.emotionAnalysis, e2 = r2.emotionAnalysis;
+    const s1 = e1?.score ?? null, s2 = e2?.score ?? null;
+    const score = (s1 !== null && s2 !== null) ? Math.round(s1 * w1 + s2 * w2) : (s1 ?? s2);
+    const levels = ["none", "low", "medium", "high"];
+    const level = levels[Math.max(levels.indexOf(e1?.level || "none"), levels.indexOf(e2?.level || "none"))];
+    emotionAnalysis = {
+      score, level,
+      rationale: [e1?.rationale, e2?.rationale].filter(Boolean).join(" | "),
+      signals: [...(e1?.signals || []), ...(e2?.signals || [])],
+    };
+  }
+
+  return {
+    enabled: true,
+    provider: `${r1.provider}+${r2.provider}`,
+    model: `${r1.model}+${r2.model}`,
+    splitMode: true,
+    firstHalfProvider: r1.provider,
+    secondHalfProvider: r2.provider,
+    summary: [r1.summary, r2.summary].filter(Boolean).join("\n\n"),
+    adjustedRisk,
+    evidenceStatus: r1.evidenceStatus || r2.evidenceStatus || "unknown",
+    annotations: [...(r1.annotations || []), ...(r2.annotations || [])],
+    vagueExplanations: [...(r1.vagueExplanations || []), ...(r2.vagueExplanations || [])],
+    contradictions: [...(r1.contradictions || []), ...(r2.contradictions || [])],
+    credibilityNotes: [...(r1.credibilityNotes || []), ...(r2.credibilityNotes || [])],
+    rewriteSuggestion: r1.rewriteSuggestion || r2.rewriteSuggestion,
+    emotionAnalysis,
+    error: r1.error || r2.error || null,
+  };
+}
+
+async function enrichAnalysisSplit(input) {
+  const primary = getServiceStatus();
+  const secondary = getSecondaryServiceStatus();
+
+  // Fall back to single-model if secondary not configured
+  if (!secondary.enabled || !primary.enabled) return enrichAnalysis(input);
+
+  const [t1, t2] = splitTextAtMidpoint(input.text);
+  if (!t2 || t2.length < 50) return enrichAnalysis(input);
+
+  const [r1, r2] = await Promise.all([
+    callEnrichWithProvider(primary, { ...input, text: t1 }),
+    callEnrichWithProvider(secondary, { ...input, text: t2 }),
+  ]);
+
+  return mergeLlmResults(r1, r2, t1, t2);
+}
+
 function normalizeProvider(value) {
   const provider = String(value || "none").trim().toLowerCase();
 
@@ -851,8 +975,10 @@ module.exports = {
   callProvider,
   classifyWithLLM,
   enrichAnalysis,
+  enrichAnalysisSplit,
   extractAtomicClaims,
   extractDocumentMetadata,
+  getSecondaryServiceStatus,
   getServiceStatus,
   parseModelJson,
   structureClaim,

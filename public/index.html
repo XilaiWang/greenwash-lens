@@ -475,6 +475,18 @@
           </div>
         </fieldset>
 
+        <fieldset class="settings-group">
+          <legend data-i18n="settings.secondaryProviderGroup">次要 Provider（分工分析）</legend>
+          <p class="settings-hint" data-i18n="settings.secondaryProviderHint">配置后，文本将被拆分为两部分，由主要和次要 Provider 并行分析。</p>
+          <div class="settings-radio-row">
+            <label><input type="radio" name="settingsSecondaryProvider" value="none"> <span data-i18n="settings.providerNone">无（不启用）</span></label>
+            <label><input type="radio" name="settingsSecondaryProvider" value="openai"> OpenAI</label>
+            <label><input type="radio" name="settingsSecondaryProvider" value="claude"> Claude</label>
+            <label><input type="radio" name="settingsSecondaryProvider" value="gemini"> Gemini</label>
+            <label><input type="radio" name="settingsSecondaryProvider" value="deepseek"> DeepSeek</label>
+          </div>
+        </fieldset>
+
         <fieldset class="settings-group" id="settingsGroupOpenai">
           <legend>OpenAI <span class="settings-status" id="settingsStatusOpenai" data-i18n="settings.unconfigured">未配置</span></legend>
           <label class="settings-label"><span data-i18n="settings.apiKeyLabel">API Key</span>

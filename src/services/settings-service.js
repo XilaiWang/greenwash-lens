@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ALLOW_KEYS = new Set([
-  "LLM_PROVIDER", "LLM_TIMEOUT_MS",
+  "LLM_PROVIDER", "LLM_SECONDARY_PROVIDER", "LLM_TIMEOUT_MS",
   "OPENAI_API_KEY", "OPENAI_MODEL",
   "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
   "GEMINI_API_KEY", "GEMINI_MODEL",
@@ -43,7 +43,9 @@ function readSettings() {
     };
   }
 
-  return { provider, timeoutMs, providers };
+  const secondaryProvider = process.env.LLM_SECONDARY_PROVIDER || "none";
+
+  return { provider, secondaryProvider, timeoutMs, providers };
 }
 
 function writeSettings(updates) {
@@ -62,6 +64,15 @@ function writeSettings(updates) {
       throw new Error(`无效的 provider: ${updates.provider}。可选: none, openai, claude, gemini, deepseek`);
     }
     changedEnv["LLM_PROVIDER"] = p;
+  }
+
+  // secondaryProvider
+  if (updates.secondaryProvider !== undefined) {
+    const p = String(updates.secondaryProvider).trim().toLowerCase();
+    if (p !== "none" && !PROVIDER_TO_KEY[p]) {
+      throw new Error(`无效的次要 provider: ${updates.secondaryProvider}。可选: none, openai, claude, gemini, deepseek`);
+    }
+    changedEnv["LLM_SECONDARY_PROVIDER"] = p;
   }
 
   // timeoutMs

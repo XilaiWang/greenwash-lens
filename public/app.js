@@ -2665,6 +2665,8 @@ async function loadSettings() {
     // populate provider radios
     const radios = document.querySelectorAll('input[name="settingsProvider"]');
     radios.forEach((r) => { r.checked = r.value === (data.provider || "none"); });
+    const secRadios = document.querySelectorAll('input[name="settingsSecondaryProvider"]');
+    secRadios.forEach((r) => { r.checked = r.value === (data.secondaryProvider || "none"); });
     // populate each provider group
     for (const p of PROVIDER_KEYS) {
       const info = data.providers?.[p] || { configured: false, model: "" };
@@ -2727,7 +2729,8 @@ async function saveAndTestSettings() {
 
   // Build updates payload
   const provider = document.querySelector('input[name="settingsProvider"]:checked')?.value || "none";
-  const payload = { provider, providers: {} };
+  const secondaryProvider = document.querySelector('input[name="settingsSecondaryProvider"]:checked')?.value || "none";
+  const payload = { provider, secondaryProvider, providers: {} };
   const timeoutEl = document.getElementById("settingsTimeout");
   if (timeoutEl && timeoutEl.value) {
     const t = Number(timeoutEl.value);

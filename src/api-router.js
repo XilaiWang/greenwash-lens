@@ -19,6 +19,7 @@ const {
 const { analyzeText } = require("./services/analysis-service");
 const {
   extractDocumentMetadata,
+  getSecondaryServiceStatus,
   getServiceStatus,
   summarizeHistory,
   testLlmConnection,
@@ -71,6 +72,7 @@ async function handleApi(request, response, url) {
       engineVersion: ENGINE_VERSION,
       storage: getStorageInfo(),
       llmService: getServiceStatus(),
+      secondaryLlmService: getSecondaryServiceStatus(),
       nlpService: await getNlpServiceStatus(),
       evidenceEngine: await checkEvidenceSidecar() ? {
         available: true,

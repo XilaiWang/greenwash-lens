@@ -149,8 +149,9 @@ function createTray() {
 }
 
 function resolveNlpServiceDir() {
-  if (fs.existsSync(path.join(__dirname, "..", "nlp-service", "main.py"))) {
-    return path.join(__dirname, "..", "nlp-service");
+  const candidate = path.join(__dirname, "..", "nlp-service");
+  if (!candidate.includes(".asar") && fs.existsSync(path.join(candidate, "main.py"))) {
+    return candidate;
   }
   const altPath = path.join(app.getPath("userData"), "nlp-service");
   if (fs.existsSync(path.join(altPath, "main.py"))) {
@@ -200,7 +201,7 @@ function stopNlpService() {
 
 function resolveEvidenceEngineDir() {
   const candidate = path.join(__dirname, "..", "evidence-engine");
-  if (fs.existsSync(path.join(candidate, "sidecar_server.py"))) {
+  if (!candidate.includes(".asar") && fs.existsSync(path.join(candidate, "sidecar_server.py"))) {
     return candidate;
   }
   const altPath = path.join(app.getPath("userData"), "evidence-engine");
