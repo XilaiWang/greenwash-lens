@@ -4,7 +4,7 @@ const llmCache = require("./llm-cache");
 const DEFAULT_MODELS = {
   openai: "gpt-4.1-mini",
   claude: "claude-3-5-haiku-latest",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.1-flash-lite",
   deepseek: "deepseek-v4-flash",
 };
 

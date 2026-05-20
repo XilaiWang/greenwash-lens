@@ -21,7 +21,7 @@ const PROVIDER_LIST = ["openai", "claude", "gemini", "deepseek"];
 const DEFAULT_MODELS = {
   openai: "gpt-4.1-mini",
   claude: "claude-3-5-haiku-latest",
-  gemini: "gemini-3.1-flash-preview",
+  gemini: "gemini-3.1-flash-lite",
   deepseek: "deepseek-v4-flash",
 };
 
