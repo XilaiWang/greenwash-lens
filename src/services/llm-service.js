@@ -41,6 +41,28 @@ async function enrichAnalysis(input) {
     };
   }
 
+  const cacheKey = llmCache.makeKey({
+    text: input.text,
+    contextType: input.classification?.contextType?.selected,
+    sector: input.classification?.sector?.selected,
+    provider: status.provider,
+    model: status.model,
+  });
+  const cached = llmCache.get(cacheKey);
+  if (cached) {
+    return {
+      enabled: true,
+      provider: status.provider,
+      model: status.model,
+      adjustedRisk: cached.adjustedRisk ?? null,
+      evidenceStatus: cached.evidenceStatus || "unknown",
+      emotionAnalysis: cached.emotionAnalysis ?? null,
+      rawText: null,
+      error: null,
+      ...cached,
+    };
+  }
+
   try {
     const prompt = buildPrompt(input);
     const rawText = await callProvider({
@@ -67,23 +89,21 @@ async function enrichAnalysis(input) {
       error: null,
     };
 
-    const cacheKey = llmCache.makeKey({
-      text: input.text,
-      contextType: input.classification?.contextType?.selected,
-      sector: input.classification?.sector?.selected,
-      provider: status.provider,
-      model: status.model,
-    });
     llmCache.set(cacheKey, {
       summary: result.summary,
       annotations: result.annotations,
+      adjustedRisk: result.adjustedRisk,
+      evidenceStatus: result.evidenceStatus,
       vagueExplanations: result.vagueExplanations,
+      contradictions: result.contradictions,
       credibilityNotes: result.credibilityNotes,
       rewriteSuggestion: result.rewriteSuggestion,
+      emotionAnalysis: result.emotionAnalysis,
     });
 
     return result;
   } catch (error) {
+    console.error(`[llm] ${status.provider} enrichAnalysis failed:`, error.message);
     return {
       enabled: false,
       provider: status.provider,
@@ -796,6 +816,7 @@ async function callEnrichWithProvider(status, input) {
       error: null,
     };
   } catch (err) {
+    console.error(`[llm] ${status.provider} callEnrichWithProvider failed:`, err.message);
     return {
       enabled: false, provider: status.provider, model: status.model,
       summary: "", annotations: [], vagueExplanations: [], contradictions: [],
@@ -831,7 +852,7 @@ function mergeLlmResults(r1, r2, t1, t2) {
   }
 
   return {
-    enabled: true,
+    enabled: r1.enabled || r2.enabled,
     provider: `${r1.provider}+${r2.provider}`,
     model: `${r1.model}+${r2.model}`,
     splitMode: true,
