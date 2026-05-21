@@ -4,13 +4,33 @@
 >
 > **AI-powered greenwashing risk detection for corporate sustainability claims.** Upload ESG reports or paste green marketing copy to automatically identify greenwashing risks. Built on an academic financial-linguistics framework, combining a rule engine, NLP sentiment analysis, and multi-model LLM support (OpenAI / Claude / Gemini / DeepSeek) — covering everything from vague-language detection to compliant rewrite suggestions. Includes a built-in PDF reader with keyword highlighting and page-origin tracing. Bilingual (Chinese / English), packaged as a native macOS / Windows desktop app — just double-click to run.
 
-当前版本 / Current version：`0.9.0`
+当前版本 / Current version：`0.9.1`
 
 > **🚧 项目持续迭代中** —— 多项功能正在快速完善，包括证据核验引擎、多层级检测模型与合规报告导出。欢迎感兴趣的伙伴交流探讨、提出建议或参与协作，请联系：**[xilai529@gmail.com](mailto:xilai529@gmail.com)**
 >
 > **🚧 Actively developed** — Evidence verification engine, multi-tier detection models, and compliance report export are in progress. Interested in collaborating or have suggestions? Reach out: **[xilai529@gmail.com](mailto:xilai529@gmail.com)**
 
 ## 最近更新 / Changelog
+
+### 2026-05-21
+- **双模型分工分析**：配置主要 + 次要 Provider 后，文本自动按位置拆分为两段，由两个模型并行分析，结果按文本长度加权合并；任一未配置自动降级为单模型
+  **Dual-model split analysis**：configure a primary and secondary LLM — text is split at a natural boundary and analyzed in parallel, results merged by weighted text length; gracefully falls back to single-model if one side is unconfigured
+- **中英文双语 UI**：全界面支持中/英一键切换（TopBar 语言切换按钮），所有静态与动态文本均已 i18n 化，偏好持久化到 localStorage
+  **Bilingual UI (ZH/EN)**：full interface switches between Chinese and English via a TopBar toggle; all static and dynamic text is i18n-aware, preference saved to localStorage
+- **设置界面新增次要 Provider**：抽屉中添加「次要 Provider」单选组，双模型分工可直接在界面内配置
+  **Settings — secondary provider**：added secondary provider radio group; dual-model split is fully configurable from the in-app settings UI
+- **全面 UI/UX 改版**：40+ 处硬编码颜色替换为 CSS 变量，深色模式全面适配；主按钮深色下改用品牌色（teal）；原生 select 加 `color-scheme: dark`；新增全局 `button:focus-visible` 焦点环；v2 深度分析动态组件补全样式；修复平板端列溢出
+  **Comprehensive UI/UX pass**：40+ hardcoded colors replaced with CSS variables; primary button uses brand teal in dark mode; native selects inherit dark theme via `color-scheme`; global `button:focus-visible` ring added; all v2 dynamic components styled; tablet column overflow fixed
+- **Tab 输入切换布局**：PDF 上传与文本粘贴改为 Tab 标签切换（全宽文本框）；PDF 提取完成后自动切回文本 Tab；三行按钮行合并为单行
+  **Tab-based input layout**：PDF upload and text paste switch via pill tabs (full-width textarea); auto-switches to text tab after PDF extraction; three button rows merged into one
+- **单列布局**：输入和检测结果从左右双列改为纵向单列，消除右侧大面积留白
+  **Single-column layout**：workspace changed from two-column grid to full-width stacked layout, eliminating blank space
+- **LLM 缓存修复**：缓存原先只写不读，已修复为先查缓存再发请求（5 分钟 TTL）；API 失败时新增服务端 `console.error` 日志
+  **LLM cache fix**：cache was write-only; now checks for a hit before making an API call (5-minute TTL); server-side error logging added on API failure
+- **修复 ASAR 模块缺失导致应用无法启动**：`greenwashing-engine.js` 在重命名后未打入 ASAR，导致启动崩溃，已修复
+  **Fix missing module crash**：`greenwashing-engine.js` was absent from ASAR after a project rename; fixed
+- **修复 Electron spawn ENOTDIR 崩溃**：ASAR 路径守护防止虚拟文件路径被传入 OS spawn
+  **Fix spawn ENOTDIR crash**：ASAR path guard prevents virtual paths from being passed to OS-level spawn
 
 ### 2026-05-20
 - **PDF 阅读器主题适配**：工具栏与页面卡片全面切换为 CSS 变量，随系统亮色/暗色模式自动切换，不再固定显示深色
@@ -35,7 +55,8 @@
 - **PDF 文档阅读器 / PDF reader**：上传报告后自动打开，支持原文高亮（绿色声明、模糊表述、绝对断言、未来承诺）和原始 PDF 页码标记 — Auto-opens on upload; highlights green claims, vague language, absolute assertions, and future commitments; shows original PDF page numbers
 - **历史记录 / History**：SQLite，本地长期保存，默认保留 2 年 — SQLite-backed local storage, 2-year retention by default
 - **规则引擎 / Rule engine**：前后端共用一套 `src/engine-core.js` — Shared front-end / back-end scoring core
-- **外部模型 / LLM support**：支持 `openai`、`claude`、`gemini`、`deepseek` — OpenAI, Claude, Gemini, DeepSeek
+- **双语界面 / Bilingual UI**：中文/英文一键切换，偏好持久化 — Chinese/English toggle, preference persisted to localStorage
+- **外部模型 / LLM support**：支持 `openai`、`claude`、`gemini`、`deepseek`，可配置双模型并行分工分析 — OpenAI, Claude, Gemini, DeepSeek; dual-model split analysis supported
 - **NLP 子服务 / NLP service**：可选 Python 服务，提供 Layer 2 情绪检测增强 — Optional Python sidecar for Layer 2 sentiment enhancement
 - **证据核验引擎 / Evidence engine**：可选 Python 子服务（端口 5176），基于 Gemini File Search 对上传的 ESG/CSR 报告做 L1-L4 流水线（索引 → 抽声明 → 多查询检索 → 裁定）。详见 [`evidence-engine/README.md`](evidence-engine/README.md)。
   Optional Python sidecar (port 5176) running a Gemini File Search L1–L4 pipeline (index → extract claims → multi-query retrieval → verdict) over uploaded ESG/CSR reports. See [`evidence-engine/README.md`](evidence-engine/README.md).
@@ -226,12 +247,19 @@ DEEPSEEK_API_KEY=...
 DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
-支持的 provider / Supported providers：
+**双模型分工分析 / Dual-model split analysis**：同时配置主要和次要 Provider，文本会被拆成两段并行发送给两个模型，结果自动合并。
 
-- `openai`
-- `claude`
-- `gemini`
-- `deepseek`
+To enable dual-model split analysis, configure both a primary and a secondary provider:
+
+```text
+LLM_PROVIDER=deepseek
+LLM_SECONDARY_PROVIDER=gemini
+DEEPSEEK_API_KEY=...
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+支持的 provider / Supported providers：`openai` · `claude` · `gemini` · `deepseek`
 
 如果没有配置外部模型，系统会继续使用本地规则引擎完成分析。
 If no external model is configured, the local rule engine handles the full analysis.
