@@ -1,6 +1,6 @@
 {
   "name": "greenwashing-lens",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "author": "Greenwashing Lens",
   "description": "Desktop-ready greenwashing risk detection application.",
